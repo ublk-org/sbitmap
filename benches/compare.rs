@@ -182,7 +182,7 @@ fn main() {
             std::process::exit(1);
         })
     } else {
-        256 // Default depth
+        32 // Default depth
     };
 
     // Parse duration in seconds (2nd parameter)
@@ -218,7 +218,7 @@ fn main() {
     println!("System: {} CPUs detected, using {} tasks for benchmark", total_cpus, num_cpus);
     println!("Bitmap depth: {} bits", depth);
     println!("Duration: {} seconds", duration_secs);
-    println!("Usage: {} [depth] [seconds] (defaults: 256 bits, 5 seconds)", args[0]);
+    println!("Usage: {} [depth] [seconds] (defaults: 32 bits, 5 seconds)", args[0]);
     println!();
 
     // Benchmark 1: Sbitmap (cache-line optimized with per-task hints)

@@ -148,7 +148,7 @@ Get the total number of bits in the bitmap.
 To compare sbitmap performance against a simple lockless bitmap:
 
 ```bash
-# Run with defaults (256 bits, 5 seconds, N-1 tasks)
+# Run with defaults (32 bits, 5 seconds, N-1 tasks)
 cargo run --bin bench_compare --release
 
 # Specify bitmap depth (1024 bits, 5 seconds)
@@ -162,10 +162,10 @@ This benchmark:
 - Auto-detects available CPUs and spawns N-1 concurrent tasks
 - Measures operations per second (get + put pairs)
 - Compares sbitmap vs a baseline lockless implementation
-- Defaults: 256 bits, 5 seconds, N-1 tasks (where N is total CPU count)
+- Defaults: 32 bits, 5 seconds, N-1 tasks (where N is total CPU count)
 
 Parameters:
-- `[depth]` - Bitmap size in bits (default: 256)
+- `[depth]` - Bitmap size in bits (default: 32)
 - `[seconds]` - Benchmark duration (default: 5)
 
 See [benches/README.md](benches/README.md) for more details.
@@ -173,14 +173,14 @@ See [benches/README.md](benches/README.md) for more details.
 Example output on a 16-CPU system:
 ```
 System: 16 CPUs detected, using 15 tasks for benchmark
-Bitmap depth: 256 bits
+Bitmap depth: 32 bits
 Duration: 5 seconds
 
 === Sbitmap (Optimized) Benchmark ===
 Configuration:
   - Duration: 5s
   - Tasks: 15
-  - Bitmap size: 256 bits
+  - Bitmap size: 32 bits
 
 Results:
   Task 0: 4835248 ops, 967049 ops/sec (0.9670 Mops/sec)

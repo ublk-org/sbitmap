@@ -7,7 +7,7 @@ The `bench_compare` binary benchmarks sbitmap against a simple lockless bitmap i
 ### Running the Benchmark
 
 ```bash
-# Run with defaults (256 bits, 5 seconds, N-1 tasks)
+# Run with defaults (32 bits, 5 seconds, N-1 tasks)
 cargo run --bin bench_compare --release
 
 # Specify bitmap depth (1024 bits, 5 seconds)
@@ -22,7 +22,7 @@ cargo run --bin bench_compare --release -- 128 2
 
 ### Parameters
 
-- `[depth]` - Bitmap size in bits (default: 256)
+- `[depth]` - Bitmap size in bits (default: 32)
 - `[seconds]` - Benchmark duration in seconds (default: 5)
 
 The benchmark auto-detects available CPUs and uses N-1 tasks (where N is total CPU count). This leaves one CPU for system tasks and ensures maximum contention testing.
@@ -72,14 +72,14 @@ On a 16-CPU system with default settings:
 
 ```
 System: 16 CPUs detected, using 15 tasks for benchmark
-Bitmap depth: 256 bits
+Bitmap depth: 32 bits
 Duration: 5 seconds
 
 === Sbitmap (Optimized) Benchmark ===
 Configuration:
   - Duration: 5s
   - Tasks: 15
-  - Bitmap size: 256 bits
+  - Bitmap size: 32 bits
 
 Results:
   Task 0: 4835248 ops, 967049 ops/sec (0.9670 Mops/sec)
@@ -93,7 +93,7 @@ Results:
 Configuration:
   - Duration: 5s
   - Tasks: 15
-  - Bitmap size: 256 bits
+  - Bitmap size: 32 bits
 
 Results:
   Task 0: 5905360 ops, 1181072 ops/sec (1.1811 Mops/sec)
