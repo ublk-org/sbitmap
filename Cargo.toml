@@ -14,8 +14,6 @@ autobenches = false
 
 [dependencies]
 log = "0.4"
-libc = { version = "0.2", optional = true }
-env_logger = { version = "0.11", optional = true }
 
 [dev-dependencies]
 env_logger = "0.11"
@@ -31,4 +29,3 @@ path = "examples/basic.rs"
 [[bin]]
 name = "bench_compare"
 path = "benches/compare.rs"
-required-features = ["libc", "env_logger"]
