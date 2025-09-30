@@ -170,20 +170,34 @@ where
 }
 
 fn main() {
-    // Parse command line arguments: [depth]
+    // Parse command line arguments: [depth] [seconds]
     let args: Vec<String> = env::args().collect();
 
     // Parse bitmap depth (1st parameter)
     let depth = if args.len() >= 2 {
         args[1].parse::<usize>().unwrap_or_else(|_| {
             eprintln!("Error: Invalid bitmap depth '{}'", args[1]);
-            eprintln!("Usage: {} [depth]", args[0]);
-            eprintln!("Example: {} 1024  (1024 bits)", args[0]);
+            eprintln!("Usage: {} [depth] [seconds]", args[0]);
+            eprintln!("Example: {} 1024 10  (1024 bits, 10 seconds)", args[0]);
             std::process::exit(1);
         })
     } else {
         256 // Default depth
     };
+
+    // Parse duration in seconds (2nd parameter)
+    let duration_secs = if args.len() >= 3 {
+        args[2].parse::<u64>().unwrap_or_else(|_| {
+            eprintln!("Error: Invalid duration '{}'", args[2]);
+            eprintln!("Usage: {} [depth] [seconds]", args[0]);
+            eprintln!("Example: {} 1024 10  (1024 bits, 10 seconds)", args[0]);
+            std::process::exit(1);
+        })
+    } else {
+        5 // Default 5 seconds
+    };
+
+    let duration = Duration::from_secs(duration_secs);
 
     // Detect number of available CPUs
     let total_cpus = std::thread::available_parallelism()
@@ -202,10 +216,10 @@ fn main() {
     println!("╚═══════════════════════════════════════════════════════════╝");
     println!();
     println!("System: {} CPUs detected, using {} tasks for benchmark", total_cpus, num_cpus);
-    println!("Bitmap depth: {} bits (use '{}' <depth> to change)", depth, args[0]);
+    println!("Bitmap depth: {} bits", depth);
+    println!("Duration: {} seconds", duration_secs);
+    println!("Usage: {} [depth] [seconds] (defaults: 256 bits, 5 seconds)", args[0]);
     println!();
-
-    let duration = Duration::from_secs(5);
 
     // Benchmark 1: Sbitmap (cache-line optimized with per-task hints)
     let sbitmap = Arc::new(Sbitmap::new(depth, None, false));
