@@ -207,6 +207,9 @@ where
 }
 
 fn main() {
+    // Initialize logger to see debug output
+    env_logger::init();
+
     // Parse command line arguments: [depth] [cpu0] [cpu1]
     let args: Vec<String> = env::args().collect();
 
