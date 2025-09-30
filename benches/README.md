@@ -7,45 +7,47 @@ The `bench_compare` binary benchmarks sbitmap against a simple lockless bitmap i
 ### Running the Benchmark
 
 ```bash
-# Run with default CPUs (0 and 2) - release optimizations
-cargo run --bin bench_compare --features libc --release
+# Run with defaults (256 bits, 5 seconds, N-1 tasks)
+cargo run --bin bench_compare --release
 
-# Specify custom CPUs (use different physical cores)
-cargo run --bin bench_compare --features libc --release -- 0 4
+# Specify bitmap depth (1024 bits, 5 seconds)
+cargo run --bin bench_compare --release -- 1024
 
-# Run without release (slower, but faster to compile)
-cargo run --bin bench_compare --features libc
+# Specify bitmap depth and duration (512 bits, 10 seconds)
+cargo run --bin bench_compare --release -- 512 10
+
+# Quick test (128 bits, 2 seconds)
+cargo run --bin bench_compare --release -- 128 2
 ```
 
-**Important**: CPU 0 and CPU 1 are often hyperthreads on the same physical core. For accurate multi-core testing, use CPUs on different physical cores (e.g., 0 and 2, or 0 and 4).
+### Parameters
 
-Check your CPU topology:
-```bash
-lscpu -e
-```
+- `[depth]` - Bitmap size in bits (default: 256)
+- `[seconds]` - Benchmark duration in seconds (default: 5)
 
-Look at the CORE column - CPUs with different CORE numbers are on different physical cores.
+The benchmark auto-detects available CPUs and uses N-1 tasks (where N is total CPU count). This leaves one CPU for system tasks and ensures maximum contention testing.
 
 ### What It Measures
 
-The benchmark spawns **two tasks** pinned to **different CPUs** (default: CPU 0 and CPU 2). Each task continuously performs:
-1. `get()` - Allocate a free bit
-2. `put()` - Free the allocated bit
+The benchmark spawns **N-1 concurrent tasks** (where N is the number of CPUs). Each task continuously performs:
+1. `get(&mut hint)` - Allocate a free bit using caller-provided hint
+2. `put(bit, &mut hint)` - Free the allocated bit and update hint
 
 This represents a realistic workload where multiple threads compete for bits from a shared bitmap.
 
 ### Metrics
 
 - **Operations per second**: Each operation is one `get()` + `put()` pair
-- **Per-task breakdown**: Shows ops/sec for each CPU
-- **Total throughput**: Combined ops/sec across both tasks
+- **Mops/sec**: Millions of operations per second for easier readability
+- **Per-task breakdown**: Shows ops/sec and Mops/sec for each task
+- **Total throughput**: Combined ops/sec and Mops/sec across all tasks
 
 ### Implementations Compared
 
 1. **Sbitmap (Optimized)**
    - Cache-line aligned words (64 bytes each)
-   - Per-task allocation hints (thread-local)
-   - Optimized shift calculation for spreading
+   - Per-task allocation hints (caller-provided, lightweight)
+   - Optimized shift calculation for better spreading
 
 2. **SimpleBitmap (Baseline)**
    - No cache-line alignment
@@ -60,23 +62,48 @@ Sbitmap is designed for scenarios with:
 - Long-running workloads (where hints provide benefit)
 
 SimpleBitmap may perform comparably or better for:
-- Small bitmaps (< 1024 bits)
+- Small bitmaps (< 256 bits)
 - Low contention scenarios
 - Very tight loops (where simplicity wins)
 
-### CPU Pinning
+### Example Output
 
-The benchmark uses `sched_setaffinity()` on Linux to pin tasks to specific CPUs. This ensures:
-- Consistent measurements
-- Real multi-core contention
-- Cache effects are visible
+On a 16-CPU system with default settings:
 
-On non-Linux platforms, CPU pinning is a no-op.
+```
+System: 16 CPUs detected, using 15 tasks for benchmark
+Bitmap depth: 256 bits
+Duration: 5 seconds
 
-### Customization
+=== Sbitmap (Optimized) Benchmark ===
+Configuration:
+  - Duration: 5s
+  - Tasks: 15
+  - Bitmap size: 256 bits
 
-You can modify `benches/compare.rs` to:
-- Change bitmap size (line: `let depth = 256;`)
-- Adjust duration (line: `let duration = Duration::from_secs(5);`)
-- Test more CPUs (add more tasks)
-- Test different workload patterns
+Results:
+  Task 0: 4835248 ops, 967049 ops/sec (0.9670 Mops/sec)
+  Task 1: 5389185 ops, 1077837 ops/sec (1.0778 Mops/sec)
+  Task 2: 5573127 ops, 1114625 ops/sec (1.1146 Mops/sec)
+  ...
+  Task 14: 5491968 ops, 1098393 ops/sec (1.0984 Mops/sec)
+  Total: 80981724 ops, 16196344 ops/sec (16.1963 Mops/sec)
+
+=== SimpleBitmap (Baseline) Benchmark ===
+Configuration:
+  - Duration: 5s
+  - Tasks: 15
+  - Bitmap size: 256 bits
+
+Results:
+  Task 0: 5905360 ops, 1181072 ops/sec (1.1811 Mops/sec)
+  ...
+  Total: 86664153 ops, 17332830 ops/sec (17.3328 Mops/sec)
+```
+
+### Notes
+
+- The benchmark does **not** pin tasks to specific CPUs - it lets the OS scheduler distribute them
+- This provides a more realistic multi-core contention scenario
+- Performance will vary based on CPU architecture and system load
+- For more consistent results, minimize background processes during benchmarking

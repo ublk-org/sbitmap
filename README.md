@@ -116,10 +116,10 @@ Get the total number of bits in the bitmap.
 
 ## Use Cases
 
-- **Journal entry allocation**: Allocate journal blocks in RAID1/filesystem journaling
 - **Tag allocation**: I/O tag allocation for block devices
 - **Resource pools**: Any scenario requiring efficient concurrent resource allocation
 - **Lock-free data structures**: Building block for concurrent algorithms
+- **NUMA machine**: improvement on NUMA machines is obvious
 
 ## Performance Characteristics
 
@@ -148,33 +148,46 @@ Get the total number of bits in the bitmap.
 To compare sbitmap performance against a simple lockless bitmap:
 
 ```bash
-# Run with default CPUs (0 and 2)
-cargo run --bin bench_compare --features libc --release
+# Run with defaults (256 bits, 5 seconds, N-1 tasks)
+cargo run --bin bench_compare --release
 
-# Or specify different CPUs (use different physical cores!)
-cargo run --bin bench_compare --features libc --release -- 0 4
+# Specify bitmap depth (1024 bits, 5 seconds)
+cargo run --bin bench_compare --release -- 1024
+
+# Specify bitmap depth and duration (512 bits, 10 seconds)
+cargo run --bin bench_compare --release -- 512 10
 ```
 
 This benchmark:
-- Spawns 2 tasks pinned to different CPUs (default: CPU 0 and CPU 2)
+- Auto-detects available CPUs and spawns N-1 concurrent tasks
 - Measures operations per second (get + put pairs)
 - Compares sbitmap vs a baseline lockless implementation
+- Defaults: 256 bits, 5 seconds, N-1 tasks (where N is total CPU count)
 
-**Important**: Use `lscpu -e` to check your CPU topology. CPUs 0 and 1 are often hyperthreads on the same core!
+Parameters:
+- `[depth]` - Bitmap size in bits (default: 256)
+- `[seconds]` - Benchmark duration (default: 5)
 
 See [benches/README.md](benches/README.md) for more details.
 
-Example output:
+Example output on a 16-CPU system:
 ```
+System: 16 CPUs detected, using 15 tasks for benchmark
+Bitmap depth: 256 bits
+Duration: 5 seconds
+
 === Sbitmap (Optimized) Benchmark ===
 Configuration:
+  - Duration: 5s
+  - Tasks: 15
   - Bitmap size: 256 bits
-  - Tasks: 2 (pinned to CPU 0 and CPU 2)
 
 Results:
-  Task 0 (CPU 0): 11428582 ops, 2285716.40 ops/sec
-  Task 1 (CPU 2): 13871289 ops, 2774257.80 ops/sec
-  Total: 25299871 ops, 5059974.20 ops/sec
+  Task 0: 4835248 ops, 967049 ops/sec (0.9670 Mops/sec)
+  Task 1: 5389185 ops, 1077837 ops/sec (1.0778 Mops/sec)
+  ...
+  Task 14: 5491968 ops, 1098393 ops/sec (1.0984 Mops/sec)
+  Total: 80981724 ops, 16196344 ops/sec (16.1963 Mops/sec)
 ```
 
 ## License
