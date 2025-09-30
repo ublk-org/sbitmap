@@ -1,0 +1,7 @@
+/target
+/.claude
+/*.patch
+/temp
+/*.orig
+/*.rej
+/*~
