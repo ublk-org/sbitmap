@@ -172,7 +172,7 @@ See [benches/README.md](benches/README.md) for more details.
 
 Example output on a 16-CPU system:
 ```
-System: 16 CPUs detected, using 15 tasks for benchmark
+System: 16 CPUs detected, 1 NUMA nodes, using 15 tasks for benchmark
 Bitmap depth: 32 bits
 Duration: 10 seconds
 

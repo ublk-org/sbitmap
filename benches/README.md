@@ -71,7 +71,7 @@ SimpleBitmap may perform comparably or better for:
 On a 16-CPU system with default settings:
 
 ```
-System: 16 CPUs detected, using 15 tasks for benchmark
+System: 16 CPUs detected, 1 NUMA nodes, using 15 tasks for benchmark
 Bitmap depth: 32 bits
 Duration: 10 seconds
 

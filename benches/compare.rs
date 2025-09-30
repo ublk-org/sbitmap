@@ -10,6 +10,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[cfg(target_os = "linux")]
+use std::fs;
+
 /// Simple lockless bitmap without cache-line optimization or hints
 /// This serves as a baseline for comparison
 struct SimpleBitmap {
@@ -125,6 +128,36 @@ impl BitmapOps for SimpleBitmap {
     }
 }
 
+/// Detect number of NUMA nodes by reading /sys/devices/system/node/ (Linux only)
+#[cfg(target_os = "linux")]
+fn detect_numa_nodes() -> usize {
+    match fs::read_dir("/sys/devices/system/node") {
+        Ok(entries) => {
+            let count = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.file_name()
+                        .to_string_lossy()
+                        .starts_with("node")
+                        && e.file_name()
+                            .to_string_lossy()
+                            .chars()
+                            .skip(4)
+                            .all(|c| c.is_ascii_digit())
+                })
+                .count();
+            if count > 0 { count } else { 1 }
+        }
+        Err(_) => 1, // Default to 1 if we can't detect
+    }
+}
+
+/// Detect number of NUMA nodes (non-Linux platforms)
+#[cfg(not(target_os = "linux"))]
+fn detect_numa_nodes() -> usize {
+    1 // Default to 1 on non-Linux platforms
+}
+
 /// Run benchmark with N tasks
 fn benchmark<B>(name: &str, bitmap: Arc<B>, duration: Duration, depth: usize, num_tasks: usize)
 where
@@ -204,6 +237,9 @@ fn main() {
         .map(|n| n.get())
         .unwrap_or(1);
 
+    // Detect number of NUMA nodes
+    let numa_nodes = detect_numa_nodes();
+
     // Use N-1 CPUs if N > 1, else use N
     let num_cpus = if total_cpus > 1 {
         total_cpus - 1
@@ -215,7 +251,8 @@ fn main() {
     println!("║  Sbitmap vs Simple Lockless Bitmap Benchmark Comparison   ║");
     println!("╚═══════════════════════════════════════════════════════════╝");
     println!();
-    println!("System: {} CPUs detected, using {} tasks for benchmark", total_cpus, num_cpus);
+    println!("System: {} CPUs detected, {} NUMA nodes, using {} tasks for benchmark",
+             total_cpus, numa_nodes, num_cpus);
     println!("Bitmap depth: {} bits", depth);
     println!("Duration: {} seconds", duration_secs);
     println!("Usage: {} [depth] [seconds] (defaults: 32 bits, 10 seconds)", args[0]);
