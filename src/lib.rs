@@ -71,6 +71,11 @@ impl Sbitmap {
 
         let map = (0..map_nr).map(|_| SbitmapWord::new()).collect();
 
+        log::debug!(
+            "sbitmap::new: depth={}, shift={}, map_nr={}, bits_per_word={}, round_robin={}",
+            depth, shift, map_nr, bits_per_word, round_robin
+        );
+
         Self {
             depth,
             shift,

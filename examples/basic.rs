@@ -5,6 +5,9 @@ use std::sync::Arc;
 use std::thread;
 
 fn main() {
+    // Initialize logger to see debug output
+    env_logger::init();
+
     println!("=== Sbitmap Basic Example ===\n");
 
     // Example 1: Simple allocation
