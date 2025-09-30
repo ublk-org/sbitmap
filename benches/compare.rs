@@ -121,11 +121,12 @@ fn run_workload<B>(
 
         let start = Instant::now();
         let mut local_ops = 0u64;
+        let mut hint = 0;
 
         while start.elapsed() < duration {
             // One operation = get() + put()
-            if let Some(bit) = bitmap.get() {
-                bitmap.put(bit);
+            if let Some(bit) = bitmap.get(&mut hint) {
+                bitmap.put(bit, &mut hint);
                 local_ops += 1;
             }
         }
@@ -136,26 +137,26 @@ fn run_workload<B>(
 
 /// Trait for bitmap operations to allow generic benchmarking
 trait BitmapOps {
-    fn get(&self) -> Option<usize>;
-    fn put(&self, bitnr: usize);
+    fn get(&self, hint: &mut usize) -> Option<usize>;
+    fn put(&self, bitnr: usize, hint: &mut usize);
 }
 
 impl BitmapOps for Sbitmap {
-    fn get(&self) -> Option<usize> {
-        Sbitmap::get(self)
+    fn get(&self, hint: &mut usize) -> Option<usize> {
+        Sbitmap::get(self, hint)
     }
 
-    fn put(&self, bitnr: usize) {
-        Sbitmap::put(self, bitnr)
+    fn put(&self, bitnr: usize, hint: &mut usize) {
+        Sbitmap::put(self, bitnr, hint)
     }
 }
 
 impl BitmapOps for SimpleBitmap {
-    fn get(&self) -> Option<usize> {
+    fn get(&self, _hint: &mut usize) -> Option<usize> {
         SimpleBitmap::get(self)
     }
 
-    fn put(&self, bitnr: usize) {
+    fn put(&self, bitnr: usize, _hint: &mut usize) {
         SimpleBitmap::put(self, bitnr)
     }
 }
@@ -234,7 +235,7 @@ fn main() {
     }
 
     println!("╔═══════════════════════════════════════════════════════════╗");
-    println!("║  Sbitmap vs Simple Lockless Bitmap Benchmark Comparison  ║");
+    println!("║  Sbitmap vs Simple Lockless Bitmap Benchmark Comparison   ║");
     println!("╚═══════════════════════════════════════════════════════════╝");
 
     let duration = Duration::from_secs(5);
@@ -256,7 +257,7 @@ CPUs used: {} and {}
 
 Sbitmap optimizations:
   ✓ Cache-line aligned words (64 bytes per word)
-  ✓ Per-task allocation hints (thread-local)
+  ✓ Per-task allocation hints (caller-provided, lightweight)
   ✓ Optimized shift calculation for better spreading
 
 SimpleBitmap characteristics:
@@ -266,7 +267,7 @@ SimpleBitmap characteristics:
 
 Expected: Sbitmap should show higher ops/sec due to:
   - Reduced false sharing between CPUs
-  - Better cache locality with per-task hints
+  - Better cache locality with caller-provided hints
   - Less contention on bitmap words
 
 Note: For best results, use CPUs on different physical cores.

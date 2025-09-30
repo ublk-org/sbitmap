@@ -6,7 +6,6 @@
 // designed for high-concurrency scenarios like journal entry allocation
 // in RAID1 systems.
 
-use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Cache line size for modern x86_64/aarch64 processors
@@ -14,12 +13,6 @@ const CACHE_LINE_SIZE: usize = 64;
 
 /// Bits per word (typically 64 on 64-bit systems)
 const BITS_PER_WORD: usize = usize::BITS as usize;
-
-// Per-task allocation hint for reducing contention
-// Each task/thread maintains its own hint to avoid conflicts
-thread_local! {
-    static ALLOC_HINT: Cell<usize> = Cell::new(0);
-}
 
 /// Cache-line aligned bitmap word to prevent false sharing
 ///
@@ -235,68 +228,54 @@ impl Sbitmap {
         None
     }
 
-    /// Update per-task allocation hint before get
-    #[inline]
-    fn update_hint_before_get(&self, depth: usize) -> usize {
-        ALLOC_HINT.with(|hint| {
-            let h = hint.get();
-            if h >= depth {
-                // Hint is out of range, reset to 0
-                hint.set(0);
-                0
-            } else {
-                h
-            }
-        })
-    }
-
-    /// Update per-task allocation hint after successful get
-    #[inline]
-    fn update_hint_after_get(&self, hint: usize, allocated: Option<usize>) {
-        ALLOC_HINT.with(|h| {
-            match allocated {
-                None => {
-                    // Map is full, reset hint to 0
-                    h.set(0);
-                }
-                Some(nr) if nr == hint || self.round_robin => {
-                    // Only update if we used the hint or in round-robin mode
-                    let next_hint = nr + 1;
-                    let next_hint = if next_hint >= self.depth {
-                        0
-                    } else {
-                        next_hint
-                    };
-                    h.set(next_hint);
-                }
-                _ => {
-                    // Don't update hint if we didn't use it
-                }
-            }
-        });
-    }
-
     /// Allocate a free bit from the bitmap
     ///
     /// This operation provides acquire barrier semantics on success.
     ///
+    /// # Arguments
+    /// * `hint` - Mutable reference to caller's allocation hint for reducing contention
+    ///
     /// # Returns
     /// * `Some(bit_number)` - Successfully allocated bit number
     /// * `None` - No free bits available
-    pub fn get(&self) -> Option<usize> {
-        let depth = self.depth;
-        let hint = self.update_hint_before_get(depth);
-        let index = self.bit_to_index(hint);
+    pub fn get(&self, hint: &mut usize) -> Option<usize> {
+        // Validate and sanitize hint
+        if *hint >= self.depth {
+            *hint = 0;
+        }
+
+        let h = *hint;
+        let index = self.bit_to_index(h);
 
         // Calculate bit offset within the word
         let alloc_hint = if self.round_robin {
-            self.bit_to_offset(hint)
+            self.bit_to_offset(h)
         } else {
             0
         };
 
         let allocated = self.find_bit(index, alloc_hint, !self.round_robin);
-        self.update_hint_after_get(hint, allocated);
+
+        // Update hint based on allocation result
+        match allocated {
+            None => {
+                // Map is full, reset hint to 0
+                *hint = 0;
+            }
+            Some(nr) if nr == h || self.round_robin => {
+                // Only update if we used the hint or in round-robin mode
+                let next_hint = nr + 1;
+                *hint = if next_hint >= self.depth {
+                    0
+                } else {
+                    next_hint
+                };
+            }
+            _ => {
+                // Don't update hint if we didn't use it
+            }
+        }
+
         allocated
     }
 
@@ -308,7 +287,8 @@ impl Sbitmap {
     ///
     /// # Arguments
     /// * `bitnr` - The bit number to free (must have been returned by get())
-    pub fn put(&self, bitnr: usize) {
+    /// * `hint` - Mutable reference to caller's allocation hint for better cache locality
+    pub fn put(&self, bitnr: usize, hint: &mut usize) {
         if bitnr >= self.depth {
             return; // Invalid bit number
         }
@@ -319,11 +299,9 @@ impl Sbitmap {
         // Clear the bit atomically with release semantics
         self.clear_bit(offset, &self.map[index].word);
 
-        // Update per-task hint for better cache locality
+        // Update hint for better cache locality (non-round-robin mode)
         if !self.round_robin && bitnr < self.depth {
-            ALLOC_HINT.with(|hint| {
-                hint.set(bitnr);
-            });
+            *hint = bitnr;
         }
     }
 
@@ -382,13 +360,14 @@ mod tests {
         let sb = Sbitmap::new(64, None, false);
         assert_eq!(sb.depth(), 64);
 
+        let mut hint = 0;
         // Allocate a bit
-        let bit = sb.get().expect("Should allocate a bit");
+        let bit = sb.get(&mut hint).expect("Should allocate a bit");
         assert!(bit < 64);
         assert!(sb.test_bit(bit));
 
         // Free the bit
-        sb.put(bit);
+        sb.put(bit, &mut hint);
         assert!(!sb.test_bit(bit));
     }
 
@@ -396,21 +375,22 @@ mod tests {
     fn test_sbitmap_exhaustion() {
         let sb = Sbitmap::new(8, None, false);
         let mut allocated = Vec::new();
+        let mut hint = 0;
 
         // Allocate all bits
         for _ in 0..8 {
-            let bit = sb.get().expect("Should allocate bit");
+            let bit = sb.get(&mut hint).expect("Should allocate bit");
             allocated.push(bit);
         }
 
         // Next allocation should fail
-        assert!(sb.get().is_none());
+        assert!(sb.get(&mut hint).is_none());
 
         // Free one bit
-        sb.put(allocated[0]);
+        sb.put(allocated[0], &mut hint);
 
         // Should be able to allocate again
-        let bit = sb.get().expect("Should allocate after free");
+        let bit = sb.get(&mut hint).expect("Should allocate after free");
         assert_eq!(bit, allocated[0]);
     }
 
@@ -424,17 +404,18 @@ mod tests {
             let sb_clone = Arc::clone(&sb);
             let handle = thread::spawn(move || {
                 let mut local_bits = Vec::new();
+                let mut hint = 0;
 
                 // Allocate some bits
                 for _ in 0..100 {
-                    if let Some(bit) = sb_clone.get() {
+                    if let Some(bit) = sb_clone.get(&mut hint) {
                         local_bits.push(bit);
                     }
                 }
 
                 // Free them
                 for bit in local_bits {
-                    sb_clone.put(bit);
+                    sb_clone.put(bit, &mut hint);
                 }
             });
             handles.push(handle);
@@ -452,17 +433,18 @@ mod tests {
     #[test]
     fn test_sbitmap_weight() {
         let sb = Sbitmap::new(64, None, false);
+        let mut hint = 0;
 
-        let bit1 = sb.get().unwrap();
+        let bit1 = sb.get(&mut hint).unwrap();
         assert_eq!(sb.weight(), 1);
 
-        let bit2 = sb.get().unwrap();
+        let bit2 = sb.get(&mut hint).unwrap();
         assert_eq!(sb.weight(), 2);
 
-        sb.put(bit1);
+        sb.put(bit1, &mut hint);
         assert_eq!(sb.weight(), 1);
 
-        sb.put(bit2);
+        sb.put(bit2, &mut hint);
         assert_eq!(sb.weight(), 0);
     }
 
@@ -473,17 +455,18 @@ mod tests {
         assert_eq!(sb.depth(), 5);
 
         let mut bits = Vec::new();
+        let mut hint = 0;
         for _ in 0..5 {
-            bits.push(sb.get().expect("Should allocate"));
+            bits.push(sb.get(&mut hint).expect("Should allocate"));
         }
 
         // Should be exhausted
-        assert!(sb.get().is_none());
+        assert!(sb.get(&mut hint).is_none());
         assert_eq!(sb.weight(), 5);
 
         // Free all
         for bit in bits {
-            sb.put(bit);
+            sb.put(bit, &mut hint);
         }
         assert_eq!(sb.weight(), 0);
     }
@@ -495,14 +478,15 @@ mod tests {
         assert_eq!(sb.depth(), 10000);
 
         let mut bits = Vec::new();
+        let mut hint = 0;
         for _ in 0..100 {
-            bits.push(sb.get().expect("Should allocate"));
+            bits.push(sb.get(&mut hint).expect("Should allocate"));
         }
 
         assert_eq!(sb.weight(), 100);
 
         for bit in bits {
-            sb.put(bit);
+            sb.put(bit, &mut hint);
         }
         assert_eq!(sb.weight(), 0);
     }
@@ -511,15 +495,16 @@ mod tests {
     fn test_per_task_hints() {
         let sb = Arc::new(Sbitmap::new(128, None, false));
 
-        // Each thread should maintain its own hint
+        // Each thread maintains its own hint in local context
         let mut handles = vec![];
         for _ in 0..4 {
             let sb = Arc::clone(&sb);
             handles.push(thread::spawn(move || {
+                let mut hint = 0;
                 // Each thread allocates and frees, updating its own hint
                 for _ in 0..10 {
-                    if let Some(bit) = sb.get() {
-                        sb.put(bit);
+                    if let Some(bit) = sb.get(&mut hint) {
+                        sb.put(bit, &mut hint);
                     }
                 }
             }));

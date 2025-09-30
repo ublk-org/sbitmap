@@ -12,11 +12,12 @@ fn main() {
     let sb = Sbitmap::new(64, None, false);
     println!("   Created bitmap with {} bits", sb.depth());
 
-    let bit = sb.get().expect("Should allocate a bit");
+    let mut hint = 0;
+    let bit = sb.get(&mut hint).expect("Should allocate a bit");
     println!("   Allocated bit: {}", bit);
     println!("   Currently allocated: {} bits", sb.weight());
 
-    sb.put(bit);
+    sb.put(bit, &mut hint);
     println!("   Freed bit: {}", bit);
     println!("   Currently allocated: {} bits\n", sb.weight());
 
@@ -24,9 +25,10 @@ fn main() {
     println!("2. Multiple Allocations:");
     let sb = Sbitmap::new(16, None, false);
     let mut bits = Vec::new();
+    let mut hint = 0;
 
     for i in 0..10 {
-        if let Some(bit) = sb.get() {
+        if let Some(bit) = sb.get(&mut hint) {
             bits.push(bit);
             println!("   Allocation {}: bit {}", i + 1, bit);
         }
@@ -37,7 +39,7 @@ fn main() {
     // Free half
     for _ in 0..5 {
         if let Some(bit) = bits.pop() {
-            sb.put(bit);
+            sb.put(bit, &mut hint);
         }
     }
     println!("   After freeing 5: {} bits allocated\n", sb.weight());
@@ -51,10 +53,11 @@ fn main() {
         let sb = Arc::clone(&sb);
         handles.push(thread::spawn(move || {
             let mut allocated = Vec::new();
+            let mut hint = 0;
 
             // Each thread allocates 50 bits
             for _ in 0..50 {
-                if let Some(bit) = sb.get() {
+                if let Some(bit) = sb.get(&mut hint) {
                     allocated.push(bit);
                 }
             }
@@ -69,7 +72,7 @@ fn main() {
 
             // Free them all
             for bit in allocated {
-                sb.put(bit);
+                sb.put(bit, &mut hint);
             }
         }));
     }
@@ -85,10 +88,11 @@ fn main() {
     println!("4. Bitmap Exhaustion:");
     let sb = Sbitmap::new(8, None, false);
     let mut bits = Vec::new();
+    let mut hint = 0;
 
     // Allocate all bits
     for _ in 0..8 {
-        if let Some(bit) = sb.get() {
+        if let Some(bit) = sb.get(&mut hint) {
             bits.push(bit);
         }
     }
@@ -96,18 +100,18 @@ fn main() {
     println!("   Allocated all {} bits", bits.len());
 
     // Try to allocate one more
-    match sb.get() {
+    match sb.get(&mut hint) {
         Some(bit) => println!("   Unexpectedly got bit: {}", bit),
         None => println!("   Correctly returned None (bitmap full)"),
     }
 
     // Free one and try again
     if let Some(bit) = bits.pop() {
-        sb.put(bit);
+        sb.put(bit, &mut hint);
         println!("   Freed bit: {}", bit);
     }
 
-    match sb.get() {
+    match sb.get(&mut hint) {
         Some(bit) => println!("   Successfully allocated bit: {}", bit),
         None => println!("   Failed to allocate"),
     }

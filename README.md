@@ -10,7 +10,7 @@ A fast and scalable lock-free bitmap implementation based on the Linux kernel's 
 
 - **Lock-free**: All operations use atomic instructions without locks
 - **Cache-line aligned**: Each bitmap word is on its own cache line to prevent false sharing
-- **Per-task hints**: Each thread maintains its own allocation hint for reduced contention
+- **Lightweight hints**: Callers pass allocation hints by reference - no thread-local overhead
 - **Scalable**: Tested with high concurrency workloads
 - **Memory efficient**: Bit-level granularity with minimal overhead
 
@@ -25,7 +25,7 @@ This implementation is based on the Linux kernel's sbitmap (from `lib/sbitmap.c`
 ### Key Optimizations
 
 1. **Cache-line separation**: Each `SbitmapWord` is aligned to 64 bytes
-2. **Per-task allocation hints**: Thread-local hints reduce contention
+2. **Per-task allocation hints**: Caller-provided hints reduce contention without thread-local overhead
 3. **Atomic operations**: Acquire/Release semantics for correctness
 4. **No deferred clearing**: Direct atomic bit clearing for simplicity
 
@@ -46,13 +46,16 @@ use sbitmap::Sbitmap;
 // Create a bitmap with 1024 bits (non-round-robin mode)
 let sb = Sbitmap::new(1024, None, false);
 
+// Each caller maintains its own allocation hint
+let mut hint = 0;
+
 // Allocate a bit
-if let Some(bit) = sb.get() {
+if let Some(bit) = sb.get(&mut hint) {
     // Use the allocated bit
     println!("Allocated bit: {}", bit);
 
     // Free it when done
-    sb.put(bit);
+    sb.put(bit, &mut hint);
 }
 ```
 
@@ -69,10 +72,13 @@ let mut handles = vec![];
 for _ in 0..8 {
     let sb = Arc::clone(&sb);
     handles.push(thread::spawn(move || {
+        // Each thread maintains its own hint in local context
+        let mut hint = 0;
+
         // Each thread can safely allocate/free bits
-        if let Some(bit) = sb.get() {
+        if let Some(bit) = sb.get(&mut hint) {
             // Do work...
-            sb.put(bit);
+            sb.put(bit, &mut hint);
         }
     }));
 }
@@ -88,13 +94,13 @@ for h in handles {
 
 Create a new sbitmap with `depth` bits. The `shift` parameter controls how many bits per word (default is auto-calculated for optimal cache usage). The `round_robin` parameter enables strict round-robin allocation order (usually `false` for better performance).
 
-### `get(&self) -> Option<usize>`
+### `get(&self, hint: &mut usize) -> Option<usize>`
 
-Allocate a free bit. Returns `Some(bit_number)` on success or `None` if no free bits are available.
+Allocate a free bit. The `hint` parameter is a mutable reference to the caller's allocation hint, which helps reduce contention by spreading allocations across different parts of the bitmap. Returns `Some(bit_number)` on success or `None` if no free bits are available.
 
-### `put(&self, bitnr: usize)`
+### `put(&self, bitnr: usize, hint: &mut usize)`
 
-Free a previously allocated bit.
+Free a previously allocated bit. The `hint` parameter is updated to improve cache locality for subsequent allocations.
 
 ### `test_bit(&self, bitnr: usize) -> bool`
 
