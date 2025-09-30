@@ -170,24 +170,38 @@ Parameters:
 
 See [benches/README.md](benches/README.md) for more details.
 
-Example output on a 16-CPU system:
+Example output on a 32-CPU system:
+
 ```
-System: 16 CPUs detected, 1 NUMA nodes, using 15 tasks for benchmark
+System: 32 CPUs detected, 2 NUMA nodes, using 31 tasks for benchmark
 Bitmap depth: 32 bits
 Duration: 10 seconds
+Usage: target/release/bench_compare [depth] [seconds] (defaults: 32 bits, 10 seconds)
+
 
 === Sbitmap (Optimized) Benchmark ===
 Configuration:
-  - Duration: 5s
-  - Tasks: 15
+  - Duration: 10s
+  - Tasks: 31
   - Bitmap size: 32 bits
 
 Results:
-  Task 0: 4835248 ops, 967049 ops/sec (0.9670 Mops/sec)
-  Task 1: 5389185 ops, 1077837 ops/sec (1.0778 Mops/sec)
+  Task 0: 3101117 ops, 310111 ops/sec (0.3101 Mops/sec)
   ...
-  Task 14: 5491968 ops, 1098393 ops/sec (1.0984 Mops/sec)
-  Total: 80981724 ops, 16196344 ops/sec (16.1963 Mops/sec)
+  Task 30: 3169582 ops, 316958 ops/sec (0.3170 Mops/sec)
+  Total: 93604448 ops, 9360444 ops/sec (9.3604 Mops/sec)
+
+=== SimpleBitmap (Baseline) Benchmark ===
+Configuration:
+  - Duration: 10s
+  - Tasks: 31
+  - Bitmap size: 32 bits
+
+Results:
+  Task 0: 1998241 ops, 199824 ops/sec (0.1998 Mops/sec)
+  ...
+  Task 30: 1835360 ops, 183536 ops/sec (0.1835 Mops/sec)
+  Total: 62530560 ops, 6253056 ops/sec (6.2531 Mops/sec)
 ```
 
 ## License
