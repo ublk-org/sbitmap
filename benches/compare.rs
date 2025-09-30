@@ -193,13 +193,17 @@ where
     let total_ops = ops0 + ops1;
     let duration_secs = duration.as_secs_f64();
 
+    let ops0_per_sec = ops0 as f64 / duration_secs;
+    let ops1_per_sec = ops1 as f64 / duration_secs;
+    let total_ops_per_sec = total_ops as f64 / duration_secs;
+
     println!("\nResults:");
-    println!("  Task 0 (CPU {}): {} ops, {:.2} ops/sec",
-             cpu0, ops0, ops0 as f64 / duration_secs);
-    println!("  Task 1 (CPU {}): {} ops, {:.2} ops/sec",
-             cpu1, ops1, ops1 as f64 / duration_secs);
-    println!("  Total: {} ops, {:.2} ops/sec",
-             total_ops, total_ops as f64 / duration_secs);
+    println!("  Task 0 (CPU {}): {} ops, {} ops/sec ({:.4} Mops/sec)",
+             cpu0, ops0, ops0_per_sec as u64, ops0_per_sec / 1_000_000.0);
+    println!("  Task 1 (CPU {}): {} ops, {} ops/sec ({:.4} Mops/sec)",
+             cpu1, ops1, ops1_per_sec as u64, ops1_per_sec / 1_000_000.0);
+    println!("  Total: {} ops, {} ops/sec ({:.4} Mops/sec)",
+             total_ops, total_ops_per_sec as u64, total_ops_per_sec / 1_000_000.0);
 }
 
 fn main() {
