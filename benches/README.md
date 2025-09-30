@@ -7,10 +7,10 @@ The `bench_compare` binary benchmarks sbitmap against a simple lockless bitmap i
 ### Running the Benchmark
 
 ```bash
-# Run with defaults (32 bits, 5 seconds, N-1 tasks)
+# Run with defaults (32 bits, 10 seconds, N-1 tasks)
 cargo run --bin bench_compare --release
 
-# Specify bitmap depth (1024 bits, 5 seconds)
+# Specify bitmap depth (1024 bits, 10 seconds)
 cargo run --bin bench_compare --release -- 1024
 
 # Specify bitmap depth and duration (512 bits, 10 seconds)
@@ -73,7 +73,7 @@ On a 16-CPU system with default settings:
 ```
 System: 16 CPUs detected, using 15 tasks for benchmark
 Bitmap depth: 32 bits
-Duration: 5 seconds
+Duration: 10 seconds
 
 === Sbitmap (Optimized) Benchmark ===
 Configuration:
@@ -91,7 +91,7 @@ Results:
 
 === SimpleBitmap (Baseline) Benchmark ===
 Configuration:
-  - Duration: 5s
+  - Duration: 10s
   - Tasks: 15
   - Bitmap size: 32 bits
 
