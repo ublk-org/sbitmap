@@ -162,7 +162,7 @@ impl BitmapOps for SimpleBitmap {
 }
 
 /// Run benchmark with two tasks on different CPUs
-fn benchmark<B>(name: &str, bitmap: Arc<B>, duration: Duration, cpu0: usize, cpu1: usize)
+fn benchmark<B>(name: &str, bitmap: Arc<B>, duration: Duration, depth: usize, cpu0: usize, cpu1: usize)
 where
     B: Send + Sync + 'static + BitmapOps,
 {
@@ -170,7 +170,7 @@ where
     println!("Configuration:");
     println!("  - Duration: {:?}", duration);
     println!("  - Tasks: 2 (pinned to CPU {} and CPU {})", cpu0, cpu1);
-    println!("  - Bitmap size: 256 bits");
+    println!("  - Bitmap size: {} bits", depth);
 
     let ops_task0 = Arc::new(AtomicU64::new(0));
     let ops_task1 = Arc::new(AtomicU64::new(0));
@@ -207,29 +207,45 @@ where
 }
 
 fn main() {
-    // Parse command line arguments for CPU cores
+    // Parse command line arguments: [depth] [cpu0] [cpu1]
     let args: Vec<String> = env::args().collect();
 
+    // Parse bitmap depth (1st parameter)
+    let depth = if args.len() >= 2 {
+        args[1].parse::<usize>().unwrap_or_else(|_| {
+            eprintln!("Error: Invalid bitmap depth '{}'", args[1]);
+            eprintln!("Usage: {} [depth] [cpu0] [cpu1]", args[0]);
+            eprintln!("Example: {} 1024 0 2  (1024 bits, CPU 0 and CPU 2)", args[0]);
+            std::process::exit(1);
+        })
+    } else {
+        256 // Default depth
+    };
+
+    // Parse CPU cores (2nd and 3rd parameters)
     // Default to CPU 0 and CPU 2 (likely different physical cores)
     // CPU 0 and CPU 1 are often hyperthreads on the same core
-    let (cpu0, cpu1) = if args.len() >= 3 {
-        let c0 = args[1].parse::<usize>().unwrap_or_else(|_| {
-            eprintln!("Error: Invalid CPU ID '{}'", args[1]);
-            eprintln!("Usage: {} [cpu0] [cpu1]", args[0]);
-            eprintln!("Example: {} 0 2  (use CPU 0 and CPU 2)", args[0]);
+    let (cpu0, cpu1) = if args.len() >= 4 {
+        let c0 = args[2].parse::<usize>().unwrap_or_else(|_| {
+            eprintln!("Error: Invalid CPU ID '{}'", args[2]);
+            eprintln!("Usage: {} [depth] [cpu0] [cpu1]", args[0]);
+            eprintln!("Example: {} 1024 0 2  (1024 bits, CPU 0 and CPU 2)", args[0]);
             std::process::exit(1);
         });
-        let c1 = args[2].parse::<usize>().unwrap_or_else(|_| {
-            eprintln!("Error: Invalid CPU ID '{}'", args[2]);
-            eprintln!("Usage: {} [cpu0] [cpu1]", args[0]);
+        let c1 = args[3].parse::<usize>().unwrap_or_else(|_| {
+            eprintln!("Error: Invalid CPU ID '{}'", args[3]);
+            eprintln!("Usage: {} [depth] [cpu0] [cpu1]", args[0]);
+            eprintln!("Example: {} 1024 0 2  (1024 bits, CPU 0 and CPU 2)", args[0]);
             std::process::exit(1);
         });
         (c0, c1)
     } else {
-        println!("Note: Using default CPUs 0 and 2 (likely different physical cores)");
-        println!("      To specify CPUs: {} <cpu0> <cpu1>", args[0]);
-        println!("      Example: {} 0 4", args[0]);
-        println!();
+        if args.len() == 1 {
+            println!("Note: Using defaults - depth={}, CPUs 0 and 2 (likely different physical cores)", depth);
+            println!("      To specify: {} <depth> <cpu0> <cpu1>", args[0]);
+            println!("      Example: {} 1024 0 4", args[0]);
+            println!();
+        }
         (0, 2)
     };
 
@@ -243,15 +259,14 @@ fn main() {
     println!("╚═══════════════════════════════════════════════════════════╝");
 
     let duration = Duration::from_secs(5);
-    let depth = 256;
 
     // Benchmark 1: Sbitmap (cache-line optimized with per-task hints)
     let sbitmap = Arc::new(Sbitmap::new(depth, None, false));
-    benchmark("Sbitmap (Optimized)", sbitmap, duration, cpu0, cpu1);
+    benchmark("Sbitmap (Optimized)", sbitmap, duration, depth, cpu0, cpu1);
 
     // Benchmark 2: SimpleBitmap (no cache-line optimization, no hints)
     let simple = Arc::new(SimpleBitmap::new(depth));
-    benchmark("SimpleBitmap (Baseline)", simple, duration, cpu0, cpu1);
+    benchmark("SimpleBitmap (Baseline)", simple, duration, depth, cpu0, cpu1);
 
     println!("\n╔═══════════════════════════════════════════════════════════╗");
     println!("║  Summary                                                  ║");
