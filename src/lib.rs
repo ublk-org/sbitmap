@@ -66,13 +66,12 @@ impl Sbitmap {
     pub fn new(depth: usize, shift: Option<u32>, round_robin: bool) -> Self {
         let shift = shift.unwrap_or_else(|| Self::calculate_shift(depth));
         let bits_per_word = 1usize << shift;
-        let map_nr = (depth + bits_per_word - 1) / bits_per_word; // DIV_ROUND_UP
+        let map_nr = depth.div_ceil(bits_per_word);
 
         let map = (0..map_nr).map(|_| SbitmapWord::new()).collect();
 
         log::debug!(
-            "sbitmap::new: depth={}, shift={}, map_nr={}, bits_per_word={}, round_robin={}",
-            depth, shift, map_nr, bits_per_word, round_robin
+            "sbitmap::new: depth={depth}, shift={shift}, map_nr={map_nr}, bits_per_word={bits_per_word}, round_robin={round_robin}"
         );
 
         Self {
@@ -153,7 +152,12 @@ impl Sbitmap {
     ///
     /// Returns the starting position if found, None otherwise.
     #[inline]
-    fn find_next_zero_batch(word: usize, depth: usize, hint: usize, nr_bits: usize) -> Option<usize> {
+    fn find_next_zero_batch(
+        word: usize,
+        depth: usize,
+        hint: usize,
+        nr_bits: usize,
+    ) -> Option<usize> {
         if depth < nr_bits || hint > depth.saturating_sub(nr_bits) {
             return None;
         }
@@ -306,14 +310,22 @@ impl Sbitmap {
     }
 
     /// Find and allocate nr_bits consecutive bits starting from the given index
-    fn find_batch(&self, start_index: usize, alloc_hint: usize, nr_bits: usize, wrap: bool) -> Option<usize> {
+    fn find_batch(
+        &self,
+        start_index: usize,
+        alloc_hint: usize,
+        nr_bits: usize,
+        wrap: bool,
+    ) -> Option<usize> {
         let mut index = start_index;
         let mut hint = alloc_hint;
 
         for _ in 0..self.map_nr {
             let depth = self.map_depth(index);
             if depth >= nr_bits {
-                if let Some(bit) = self.get_batch_from_word(&self.map[index].word, depth, hint, nr_bits, wrap) {
+                if let Some(bit) =
+                    self.get_batch_from_word(&self.map[index].word, depth, hint, nr_bits, wrap)
+                {
                     return Some((index << self.shift) + bit);
                 }
             }
@@ -509,7 +521,9 @@ impl Sbitmap {
         let mask = (1usize << nr_bits).wrapping_sub(1);
         let clear_mask = !(mask << offset);
 
-        self.map[start_index].word.fetch_and(clear_mask, Ordering::Release);
+        self.map[start_index]
+            .word
+            .fetch_and(clear_mask, Ordering::Release);
 
         // Update hint for better cache locality (non-round-robin mode)
         if !self.round_robin && bitnr < self.depth {
@@ -750,7 +764,11 @@ mod tests {
             let bit = sb.get(&mut hint).expect("Should allocate bit");
             allocated.push(bit);
             // In round-robin mode, bits should be allocated sequentially
-            assert_eq!(bit, i, "Round-robin should allocate bit {} but got {}", i, bit);
+            assert_eq!(
+                bit, i,
+                "Round-robin should allocate bit {} but got {}",
+                i, bit
+            );
         }
 
         // Free some bits in the middle
@@ -951,17 +969,26 @@ mod tests {
         assert_eq!(bit0, 0);
 
         let _bit4 = sb.get(&mut hint).expect("Should skip to bit 3");
-        let _bit5 = sb.get_batch(3, &mut hint).expect("Should allocate bits 4-6");
+        let _bit5 = sb
+            .get_batch(3, &mut hint)
+            .expect("Should allocate bits 4-6");
 
         let _bit8 = sb.get(&mut hint).expect("Should skip to bit 7");
-        let _bit9 = sb.get_batch(3, &mut hint).expect("Should allocate bits 8-10");
+        let _bit9 = sb
+            .get_batch(3, &mut hint)
+            .expect("Should allocate bits 8-10");
 
         let _bit12 = sb.get(&mut hint).expect("Should skip to bit 11");
-        let _bit13 = sb.get_batch(3, &mut hint).expect("Should allocate bits 12-14");
+        let _bit13 = sb
+            .get_batch(3, &mut hint)
+            .expect("Should allocate bits 12-14");
 
         // Now we have: XXX_XXX_XXX_XXX_ (where X is allocated, _ is free)
         // Trying to allocate 4 consecutive bits should fail
-        assert!(sb.get_batch(4, &mut hint).is_none(), "Should not find 4 consecutive bits");
+        assert!(
+            sb.get_batch(4, &mut hint).is_none(),
+            "Should not find 4 consecutive bits"
+        );
 
         // But we can still allocate single bits
         assert!(sb.get(&mut hint).is_some());
@@ -997,6 +1024,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unused_assignments)]
     fn test_batch_word_boundary() {
         // Create bitmap with known word size
         let sb = Sbitmap::new(128, Some(6), false); // 2^6 = 64 bits per word
@@ -1027,7 +1055,7 @@ mod tests {
         // Verify put_batch rejects spanning word boundary
         hint = 0;
         sb.put_batch(62, 4, &mut hint); // Should be rejected (spans words)
-        // Bits 60-63 should still be allocated since put_batch should reject this
+                                        // Bits 60-63 should still be allocated since put_batch should reject this
         assert_eq!(sb.weight(), 4);
     }
 
@@ -1097,7 +1125,10 @@ mod tests {
 
         // Trying to allocate 2 consecutive bits should fail (all free bits are isolated)
         hint = 0;
-        assert!(sb.get_batch(2, &mut hint).is_none(), "Should not find 2 consecutive bits in fragmented bitmap");
+        assert!(
+            sb.get_batch(2, &mut hint).is_none(),
+            "Should not find 2 consecutive bits in fragmented bitmap"
+        );
 
         // Free an adjacent bit to create a gap of 2 consecutive free bits
         sb.put(all_bits[1], &mut hint);
@@ -1105,11 +1136,17 @@ mod tests {
         // Now we should be able to allocate a batch of 2
         hint = 0;
         let batch = sb.get_batch(2, &mut hint);
-        assert!(batch.is_some(), "Should find 2 consecutive bits after creating gap");
+        assert!(
+            batch.is_some(),
+            "Should find 2 consecutive bits after creating gap"
+        );
 
         // The batch should be bits 0 and 1
         if let Some(start) = batch {
-            assert_eq!(start, 0, "Should allocate the first available consecutive pair");
+            assert_eq!(
+                start, 0,
+                "Should allocate the first available consecutive pair"
+            );
         }
     }
 

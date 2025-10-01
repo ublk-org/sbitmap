@@ -74,7 +74,6 @@ impl SimpleBitmap {
 
         self.words[word_idx].fetch_and(mask, Ordering::Release);
     }
-
 }
 
 /// Initialize allocation hint combining stack address + system time for better randomization
@@ -94,12 +93,8 @@ fn init_hint(depth: usize) -> usize {
 }
 
 /// Run benchmark workload: continuous get() and put() operations
-fn run_workload<B>(
-    bitmap: Arc<B>,
-    duration: Duration,
-    ops_counter: Arc<AtomicU64>,
-    depth: usize,
-) where
+fn run_workload<B>(bitmap: Arc<B>, duration: Duration, ops_counter: Arc<AtomicU64>, depth: usize)
+where
     B: Send + Sync + 'static,
     B: BitmapOps,
 {
@@ -179,9 +174,7 @@ fn detect_numa_nodes() -> usize {
             let count = entries
                 .filter_map(|e| e.ok())
                 .filter(|e| {
-                    e.file_name()
-                        .to_string_lossy()
-                        .starts_with("node")
+                    e.file_name().to_string_lossy().starts_with("node")
                         && e.file_name()
                             .to_string_lossy()
                             .chars()
@@ -189,7 +182,11 @@ fn detect_numa_nodes() -> usize {
                             .all(|c| c.is_ascii_digit())
                 })
                 .count();
-            if count > 0 { count } else { 1 }
+            if count > 0 {
+                count
+            } else {
+                1
+            }
         }
         Err(_) => 1, // Default to 1 if we can't detect
     }
@@ -210,7 +207,9 @@ fn print_usage(program: &str) {
     eprintln!("  --shift SHIFT      log2(bits per word) (default: auto-calculated)");
     eprintln!("  --time TIME        Benchmark duration in seconds (default: 10)");
     eprintln!("  --tasks TASKS      Number of concurrent tasks (default: NUM_CPUS - 1)");
-    eprintln!("  --batch NR_BITS    Use get_batch/put_batch with NR_BITS (default: 1, single bit mode)");
+    eprintln!(
+        "  --batch NR_BITS    Use get_batch/put_batch with NR_BITS (default: 1, single bit mode)"
+    );
     eprintln!("  --round-robin      Enable round-robin allocation mode (default: disabled)");
     eprintln!("  -h, --help         Show this help message");
     eprintln!();
@@ -226,16 +225,39 @@ fn benchmark<B>(name: &str, bitmap: Arc<B>, duration: Duration, depth: usize, nu
 where
     B: Send + Sync + 'static + BitmapOps,
 {
-    benchmark_internal(name, duration, depth, num_tasks, None, |bitmap_clone, counter| {
-        run_workload(bitmap_clone, duration, counter, depth);
-    }, bitmap);
+    benchmark_internal(
+        name,
+        duration,
+        depth,
+        num_tasks,
+        None,
+        |bitmap_clone, counter| {
+            run_workload(bitmap_clone, duration, counter, depth);
+        },
+        bitmap,
+    );
 }
 
 /// Run batch benchmark with N tasks (Sbitmap only)
-fn batch_benchmark(name: &str, bitmap: Arc<Sbitmap>, duration: Duration, depth: usize, num_tasks: usize, batch_size: usize) {
-    benchmark_internal(name, duration, depth, num_tasks, Some(batch_size), |bitmap_clone, counter| {
-        run_batch_workload(bitmap_clone, duration, counter, depth, batch_size);
-    }, bitmap);
+fn batch_benchmark(
+    name: &str,
+    bitmap: Arc<Sbitmap>,
+    duration: Duration,
+    depth: usize,
+    num_tasks: usize,
+    batch_size: usize,
+) {
+    benchmark_internal(
+        name,
+        duration,
+        depth,
+        num_tasks,
+        Some(batch_size),
+        |bitmap_clone, counter| {
+            run_batch_workload(bitmap_clone, duration, counter, depth, batch_size);
+        },
+        bitmap,
+    );
 }
 
 /// Internal benchmark implementation shared by benchmark() and batch_benchmark()
@@ -247,8 +269,7 @@ fn benchmark_internal<B, F>(
     batch_size: Option<usize>,
     spawn_workload: F,
     bitmap: Arc<B>,
-)
-where
+) where
     B: Send + Sync + 'static,
     F: Fn(Arc<B>, Arc<AtomicU64>),
 {
@@ -290,26 +311,35 @@ where
     for i in 0..num_tasks {
         let ops = ops_counters[i].load(Ordering::Relaxed);
         let ops_per_sec = ops as f64 / duration_secs;
-        println!("  Task {}: {} ops, {} ops/sec ({:.4} Mops/sec)",
-                 i, ops, ops_per_sec as u64, ops_per_sec / 1_000_000.0);
+        println!(
+            "  Task {}: {} ops, {} ops/sec ({:.4} Mops/sec)",
+            i,
+            ops,
+            ops_per_sec as u64,
+            ops_per_sec / 1_000_000.0
+        );
         total_ops += ops;
     }
 
     let total_ops_per_sec = total_ops as f64 / duration_secs;
-    println!("  Total: {} ops, {} ops/sec ({:.4} Mops/sec)",
-             total_ops, total_ops_per_sec as u64, total_ops_per_sec / 1_000_000.0);
+    println!(
+        "  Total: {} ops, {} ops/sec ({:.4} Mops/sec)",
+        total_ops,
+        total_ops_per_sec as u64,
+        total_ops_per_sec / 1_000_000.0
+    );
 }
 
 fn main() {
     // Parse command line arguments: --depth DEPTH --shift SHIFT --time TIME --tasks TASKS --round-robin
     let args: Vec<String> = env::args().collect();
 
-    let mut depth = 32usize;      // Default depth
-    let mut shift: Option<u32> = None;  // Default shift (auto-calculate)
-    let mut time = 10u64;         // Default time in seconds
-    let mut tasks: Option<usize> = None;  // Default tasks (auto-calculate: NUM_CPUS - 1)
-    let mut batch_size = 1usize;  // Default batch size (1 = single bit mode)
-    let mut round_robin = false;  // Default round-robin mode (disabled)
+    let mut depth = 32usize; // Default depth
+    let mut shift: Option<u32> = None; // Default shift (auto-calculate)
+    let mut time = 10u64; // Default time in seconds
+    let mut tasks: Option<usize> = None; // Default tasks (auto-calculate: NUM_CPUS - 1)
+    let mut batch_size = 1usize; // Default batch size (1 = single bit mode)
+    let mut round_robin = false; // Default round-robin mode (disabled)
 
     // Simple argument parser
     let mut i = 1;
@@ -422,7 +452,7 @@ fn main() {
 
     // Determine number of tasks to run
     let num_cpus = match tasks {
-        Some(t) => t,  // Use user-specified value
+        Some(t) => t, // Use user-specified value
         None => {
             // Default: Use N-1 CPUs if N > 1, else use N
             if total_cpus > 1 {
@@ -437,8 +467,10 @@ fn main() {
     println!("║  Sbitmap vs Simple Lockless Bitmap Benchmark Comparison   ║");
     println!("╚═══════════════════════════════════════════════════════════╝");
     println!();
-    println!("System: {} CPUs detected, {} NUMA nodes, using {} tasks for benchmark",
-             total_cpus, numa_nodes, num_cpus);
+    println!(
+        "System: {} CPUs detected, {} NUMA nodes, using {} tasks for benchmark",
+        total_cpus, numa_nodes, num_cpus
+    );
     println!("Bitmap depth: {} bits", depth);
 
     // Create sbitmap to get actual configuration
@@ -450,15 +482,25 @@ fn main() {
     } else {
         println!("Shift: auto-calculated (bits per word: {})", bits_per_word);
     }
-    println!("Round-robin: {}", if round_robin { "enabled" } else { "disabled" });
-    println!("Batch size: {} bit{}", batch_size, if batch_size == 1 { "" } else { "s" });
+    println!(
+        "Round-robin: {}",
+        if round_robin { "enabled" } else { "disabled" }
+    );
+    println!(
+        "Batch size: {} bit{}",
+        batch_size,
+        if batch_size == 1 { "" } else { "s" }
+    );
     println!("Duration: {} seconds", duration_secs);
     println!();
 
     if batch_size > 1 {
         // Batch mode: only benchmark Sbitmap with get_batch/put_batch
         if batch_size > bits_per_word {
-            eprintln!("Error: batch size ({}) exceeds bits_per_word ({})", batch_size, bits_per_word);
+            eprintln!(
+                "Error: batch size ({}) exceeds bits_per_word ({})",
+                batch_size, bits_per_word
+            );
             eprintln!("Batch operations require nr_bits <= bits_per_word()");
             std::process::exit(1);
         }
@@ -477,7 +519,8 @@ fn main() {
         println!("\n╔═══════════════════════════════════════════════════════════╗");
         println!("║  Summary                                                  ║");
         println!("╚═══════════════════════════════════════════════════════════╝");
-        println!("
+        println!(
+            "
 Tasks: {} concurrent tasks
 
 Sbitmap optimizations:
@@ -494,12 +537,15 @@ Expected: Sbitmap should show higher ops/sec due to:
   - Reduced false sharing between CPUs
   - Better cache locality with caller-provided hints
   - Less contention on bitmap words
-", num_cpus);
+",
+            num_cpus
+        );
     } else {
         println!("\n╔═══════════════════════════════════════════════════════════╗");
         println!("║  Batch Mode Summary                                       ║");
         println!("╚═══════════════════════════════════════════════════════════╝");
-        println!("
+        println!(
+            "
 Tasks: {} concurrent tasks
 Batch size: {} consecutive bits
 
@@ -508,6 +554,8 @@ Batch operations:
   ✓ Atomic deallocation of {} consecutive bits via put_batch()
   ✓ All bits guaranteed within single word (no spanning)
   ✓ Lock-free with acquire/release memory ordering
-", num_cpus, batch_size, batch_size, batch_size);
+",
+            num_cpus, batch_size, batch_size, batch_size
+        );
     }
 }
