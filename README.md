@@ -88,6 +88,32 @@ for h in handles {
 }
 ```
 
+### Batch Allocation
+
+```rust
+use sbitmap::Sbitmap;
+
+// Create a bitmap with 1024 bits
+let sb = Sbitmap::new(1024, None, false);
+let mut hint = 0;
+
+// Allocate 4 consecutive bits atomically
+if let Some(start_bit) = sb.get_batch(4, &mut hint) {
+    // Use bits: start_bit, start_bit+1, start_bit+2, start_bit+3
+    println!("Allocated bits {}-{}", start_bit, start_bit + 3);
+
+    // Process consecutive resources...
+    for i in 0..4 {
+        println!("Using bit {}", start_bit + i);
+    }
+
+    // Free all 4 bits atomically when done
+    sb.put_batch(start_bit, 4, &mut hint);
+}
+```
+
+**Note:** Batch operations require `nr_bits <= bits_per_word()`. All consecutive bits are guaranteed to be within the same word (no spanning across word boundaries).
+
 ## API
 
 ### `Sbitmap::new(depth: usize, shift: Option<u32>, round_robin: bool) -> Self`
@@ -108,6 +134,23 @@ Allocate a free bit. The `hint` parameter is a mutable reference to the caller's
 
 Free a previously allocated bit. The `hint` parameter is updated to improve cache locality for subsequent allocations.
 
+### `get_batch(&self, nr_bits: usize, hint: &mut usize) -> Option<usize>`
+
+Allocate `nr_bits` consecutive free bits from the bitmap atomically. This operation provides acquire barrier semantics on success. Only supports `nr_bits <= bits_per_word()` to ensure all bits are within the same word (no spanning across word boundaries).
+
+Returns `Some(start_bit)` where `start_bit` is the first bit of the allocated consecutive range, or `None` if no consecutive `nr_bits` are available or `nr_bits > bits_per_word()`.
+
+**Use cases:**
+- Allocating contiguous resource ranges (e.g., multiple consecutive I/O tags)
+- Batch resource allocation for improved efficiency
+- DMA buffer allocation requiring consecutive indices
+
+### `put_batch(&self, bitnr: usize, nr_bits: usize, hint: &mut usize)`
+
+Free `nr_bits` consecutive previously allocated bits starting from `bitnr`. This operation provides release barrier semantics, ensuring that all writes to data associated with these bits are visible before the bits are freed. Only supports `nr_bits <= bits_per_word()` to ensure all bits are within the same word.
+
+The `hint` parameter is updated for better cache locality in subsequent allocations.
+
 ### `test_bit(&self, bitnr: usize) -> bool`
 
 Check if a bit is currently allocated.
@@ -125,12 +168,15 @@ Get the total number of bits in the bitmap.
 - **Tag allocation**: I/O tag allocation for block devices
 - **Resource pools**: Any scenario requiring efficient concurrent resource allocation
 - **Lock-free data structures**: Building block for concurrent algorithms
+- **Batch resource allocation**: Allocating multiple consecutive I/O tags, DMA buffers, or contiguous resource ranges
 - **NUMA machine**: improvement on NUMA machines is obvious
 
 ## Performance Characteristics
 
 - **Allocation**: O(n) worst case, O(1) average with hints
 - **Deallocation**: O(1)
+- **Batch allocation**: O(n * nr_bits) worst case, finds consecutive bits within single word
+- **Batch deallocation**: O(1), atomic clear of consecutive bits
 - **Memory overhead**: ~56 bytes per word (64 bits) due to cache-line alignment
 - **Thread safety**: Lock-free with atomic operations
 - **Scalability**: Linear scaling with number of CPUs up to bitmap depth
@@ -165,6 +211,8 @@ let sb = Sbitmap::new(1024, None, false);     // Auto-calculated based on depth
 
 - `get()`: Acquire semantics - ensures allocated bit is visible before use
 - `put()`: Release semantics - ensures all writes complete before bit is freed
+- `get_batch()`: Acquire semantics - ensures all allocated bits are visible before use
+- `put_batch()`: Release semantics - ensures all writes complete before bits are freed
 
 ## Comparison with Alternatives
 
@@ -189,14 +237,17 @@ cargo run --bin bench_compare --release -- --depth 1024 --time 5
 # Specify bitmap depth, shift, and duration
 cargo run --bin bench_compare --release -- --depth 512 --shift 5 --time 10
 
+# Benchmark batch operations (allocating 4 consecutive bits)
+cargo run --bin bench_compare --release -- --depth 128 --batch 4 --time 5
+
 # Show help
 cargo run --bin bench_compare --release -- --help
 ```
 
 This benchmark:
 - Auto-detects available CPUs and spawns N-1 concurrent tasks
-- Measures operations per second (get + put pairs)
-- Compares sbitmap vs a baseline lockless implementation
+- Measures operations per second (get + put pairs for single-bit mode, get_batch + put_batch pairs for batch mode)
+- Compares sbitmap vs a baseline lockless implementation (single-bit mode only)
 - Defaults: 32 bits, auto-calculated shift, 10 seconds, N-1 tasks (where N is total CPU count)
 
 Options:
@@ -204,6 +255,7 @@ Options:
 - `--shift SHIFT` - log2(bits per word), auto-calculated if not specified
 - `--time TIME` - Benchmark duration in seconds (default: 10)
 - `--tasks TASKS` - Number of concurrent tasks (default: NUM_CPUS - 1)
+- `--batch NR_BITS` - Use get_batch/put_batch with NR_BITS (default: 1, single bit mode)
 - `--round-robin` - Enable round-robin allocation mode (default: disabled)
 
 See [benches/README.md](benches/README.md) for more details.
