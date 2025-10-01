@@ -3,8 +3,7 @@
 // Fast and scalable bitmap implementation based on Linux kernel's sbitmap
 //
 // This module provides lock-free, cache-line optimized bitmap allocation
-// designed for high-concurrency scenarios like journal entry allocation
-// in RAID1 systems.
+// designed for high-concurrency scenarios like IO tag allocation.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
