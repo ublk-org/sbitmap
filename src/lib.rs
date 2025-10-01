@@ -315,6 +315,11 @@ impl Sbitmap {
         self.depth
     }
 
+    /// Get the number of bits per word
+    pub fn bits_per_word(&self) -> usize {
+        1usize << self.shift
+    }
+
     /// Check if a specific bit is set (allocated)
     pub fn test_bit(&self, bitnr: usize) -> bool {
         if bitnr >= self.depth {
@@ -521,5 +526,17 @@ mod tests {
 
         // All bits should be free after all threads complete
         assert_eq!(sb.weight(), 0);
+    }
+
+    #[test]
+    fn test_bits_per_word() {
+        let sb = Sbitmap::new(128, Some(6), false);
+        assert_eq!(sb.bits_per_word(), 64); // 2^6 = 64
+
+        let sb2 = Sbitmap::new(128, Some(5), false);
+        assert_eq!(sb2.bits_per_word(), 32); // 2^5 = 32
+
+        let sb3 = Sbitmap::new(128, Some(4), false);
+        assert_eq!(sb3.bits_per_word(), 16); // 2^4 = 16
     }
 }
