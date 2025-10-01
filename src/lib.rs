@@ -18,7 +18,7 @@ const BITS_PER_WORD: usize = usize::BITS as usize;
 /// Each word is placed on its own cache line to ensure that concurrent
 /// operations on different words don't cause cache line ping-pong.
 #[repr(align(64))]
-pub struct SbitmapWord {
+struct SbitmapWord {
     /// Atomic bitmap word - bits set to 1 are allocated, 0 are free
     word: AtomicUsize,
     /// Padding to fill the cache line
@@ -346,15 +346,6 @@ impl Sbitmap {
             count += (word & mask).count_ones() as usize;
         }
         count
-    }
-
-    /// Set the round-robin allocation mode
-    ///
-    /// In round-robin mode, allocation always continues from the last
-    /// allocated position. This is stricter but less efficient than
-    /// the default mode.
-    pub fn set_round_robin(&mut self, enable: bool) {
-        self.round_robin = enable;
     }
 }
 
