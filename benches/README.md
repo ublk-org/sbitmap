@@ -7,23 +7,27 @@ The `bench_compare` binary benchmarks sbitmap against a simple lockless bitmap i
 ### Running the Benchmark
 
 ```bash
-# Run with defaults (32 bits, 10 seconds, N-1 tasks)
+# Run with defaults (32 bits, auto shift, 10 seconds, N-1 tasks)
 cargo run --bin bench_compare --release
 
-# Specify bitmap depth (1024 bits, 10 seconds)
-cargo run --bin bench_compare --release -- 1024
+# Specify bitmap depth and duration
+cargo run --bin bench_compare --release -- --depth 1024 --time 5
 
-# Specify bitmap depth and duration (512 bits, 10 seconds)
-cargo run --bin bench_compare --release -- 512 10
+# Specify bitmap depth, shift, and duration
+cargo run --bin bench_compare --release -- --depth 512 --shift 5 --time 10
 
 # Quick test (128 bits, 2 seconds)
-cargo run --bin bench_compare --release -- 128 2
+cargo run --bin bench_compare --release -- --depth 128 --time 2
+
+# Show help
+cargo run --bin bench_compare --release -- --help
 ```
 
-### Parameters
+### Options
 
-- `[depth]` - Bitmap size in bits (default: 32)
-- `[seconds]` - Benchmark duration in seconds (default: 5)
+- `--depth DEPTH` - Bitmap depth in bits (default: 32)
+- `--shift SHIFT` - log2(bits per word), auto-calculated if not specified
+- `--time TIME` - Benchmark duration in seconds (default: 10)
 
 The benchmark auto-detects available CPUs and uses N-1 tasks (where N is total CPU count). This leaves one CPU for system tasks and ensures maximum contention testing.
 
@@ -73,15 +77,15 @@ On a 32-CPU system with default settings:
 ```
 System: 32 CPUs detected, 2 NUMA nodes, using 31 tasks for benchmark
 Bitmap depth: 32 bits
+Shift: auto-calculated
 Duration: 10 seconds
-Usage: target/release/bench_compare [depth] [seconds] (defaults: 32 bits, 10 seconds)
 
 
 === Sbitmap (Optimized) Benchmark ===
 Configuration:
   - Duration: 10s
   - Tasks: 31
-  - Bitmap size: 32 bits
+  - Bitmap depth: 32 bits
 
 Results:
   Task 0: 3101117 ops, 310111 ops/sec (0.3101 Mops/sec)
@@ -93,7 +97,7 @@ Results:
 Configuration:
   - Duration: 10s
   - Tasks: 31
-  - Bitmap size: 32 bits
+  - Bitmap depth: 32 bits
 
 Results:
   Task 0: 1998241 ops, 199824 ops/sec (0.1998 Mops/sec)

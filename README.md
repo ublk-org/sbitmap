@@ -127,7 +127,7 @@ Get the total number of bits in the bitmap.
 - **Deallocation**: O(1)
 - **Memory overhead**: ~56 bytes per word (64 bits) due to cache-line alignment
 - **Thread safety**: Lock-free with atomic operations
-- **Scalability**: Linear scaling with number of CPUs up to bitmap size
+- **Scalability**: Linear scaling with number of CPUs up to bitmap depth
 
 ## Memory Ordering
 
@@ -148,25 +148,29 @@ Get the total number of bits in the bitmap.
 To compare sbitmap performance against a simple lockless bitmap:
 
 ```bash
-# Run with defaults (32 bits, 10 seconds, N-1 tasks)
+# Run with defaults (32 bits, auto shift, 10 seconds, N-1 tasks)
 cargo run --bin bench_compare --release
 
-# Specify bitmap depth (1024 bits, 10 seconds)
-cargo run --bin bench_compare --release -- 1024
+# Specify bitmap depth and duration
+cargo run --bin bench_compare --release -- --depth 1024 --time 5
 
-# Specify bitmap depth and duration (512 bits, 10 seconds)
-cargo run --bin bench_compare --release -- 512 10
+# Specify bitmap depth, shift, and duration
+cargo run --bin bench_compare --release -- --depth 512 --shift 5 --time 10
+
+# Show help
+cargo run --bin bench_compare --release -- --help
 ```
 
 This benchmark:
 - Auto-detects available CPUs and spawns N-1 concurrent tasks
 - Measures operations per second (get + put pairs)
 - Compares sbitmap vs a baseline lockless implementation
-- Defaults: 32 bits, 10 seconds, N-1 tasks (where N is total CPU count)
+- Defaults: 32 bits, auto-calculated shift, 10 seconds, N-1 tasks (where N is total CPU count)
 
-Parameters:
-- `[depth]` - Bitmap size in bits (default: 32)
-- `[seconds]` - Benchmark duration (default: 5)
+Options:
+- `--depth DEPTH` - Bitmap depth in bits (default: 32)
+- `--shift SHIFT` - log2(bits per word), auto-calculated if not specified
+- `--time TIME` - Benchmark duration in seconds (default: 10)
 
 See [benches/README.md](benches/README.md) for more details.
 
@@ -175,15 +179,15 @@ Example output on a 32-CPU system:
 ```
 System: 32 CPUs detected, 2 NUMA nodes, using 31 tasks for benchmark
 Bitmap depth: 32 bits
+Shift: auto-calculated
 Duration: 10 seconds
-Usage: target/release/bench_compare [depth] [seconds] (defaults: 32 bits, 10 seconds)
 
 
 === Sbitmap (Optimized) Benchmark ===
 Configuration:
   - Duration: 10s
   - Tasks: 31
-  - Bitmap size: 32 bits
+  - Bitmap depth: 32 bits
 
 Results:
   Task 0: 3101117 ops, 310111 ops/sec (0.3101 Mops/sec)
@@ -195,7 +199,7 @@ Results:
 Configuration:
   - Duration: 10s
   - Tasks: 31
-  - Bitmap size: 32 bits
+  - Bitmap depth: 32 bits
 
 Results:
   Task 0: 1998241 ops, 199824 ops/sec (0.1998 Mops/sec)

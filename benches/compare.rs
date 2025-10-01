@@ -158,6 +158,21 @@ fn detect_numa_nodes() -> usize {
     1 // Default to 1 on non-Linux platforms
 }
 
+/// Print usage information
+fn print_usage(program: &str) {
+    eprintln!("Usage: {} [OPTIONS]", program);
+    eprintln!();
+    eprintln!("Options:");
+    eprintln!("  --depth DEPTH   Bitmap depth in bits (default: 32)");
+    eprintln!("  --shift SHIFT   log2(bits per word) (default: auto-calculated)");
+    eprintln!("  --time TIME     Benchmark duration in seconds (default: 10)");
+    eprintln!("  -h, --help      Show this help message");
+    eprintln!();
+    eprintln!("Examples:");
+    eprintln!("  {} --depth 1024 --time 5", program);
+    eprintln!("  {} --depth 512 --shift 5 --time 10", program);
+}
+
 /// Run benchmark with N tasks
 fn benchmark<B>(name: &str, bitmap: Arc<B>, duration: Duration, depth: usize, num_tasks: usize)
 where
@@ -167,7 +182,7 @@ where
     println!("Configuration:");
     println!("  - Duration: {:?}", duration);
     println!("  - Tasks: {}", num_tasks);
-    println!("  - Bitmap size: {} bits", depth);
+    println!("  - Bitmap depth: {} bits", depth);
 
     // Create counter for each task
     let mut ops_counters = Vec::new();
@@ -203,32 +218,70 @@ where
 }
 
 fn main() {
-    // Parse command line arguments: [depth] [seconds]
+    // Parse command line arguments: --depth DEPTH --shift SHIFT --time TIME
     let args: Vec<String> = env::args().collect();
 
-    // Parse bitmap depth (1st parameter)
-    let depth = if args.len() >= 2 {
-        args[1].parse::<usize>().unwrap_or_else(|_| {
-            eprintln!("Error: Invalid bitmap depth '{}'", args[1]);
-            eprintln!("Usage: {} [depth] [seconds]", args[0]);
-            eprintln!("Example: {} 1024 10  (1024 bits, 10 seconds)", args[0]);
-            std::process::exit(1);
-        })
-    } else {
-        32 // Default depth
-    };
+    let mut depth = 32usize;      // Default depth
+    let mut shift: Option<u32> = None;  // Default shift (auto-calculate)
+    let mut time = 10u64;         // Default time in seconds
 
-    // Parse duration in seconds (2nd parameter)
-    let duration_secs = if args.len() >= 3 {
-        args[2].parse::<u64>().unwrap_or_else(|_| {
-            eprintln!("Error: Invalid duration '{}'", args[2]);
-            eprintln!("Usage: {} [depth] [seconds]", args[0]);
-            eprintln!("Example: {} 1024 10  (1024 bits, 10 seconds)", args[0]);
-            std::process::exit(1);
-        })
-    } else {
-        10 // Default 10 seconds
-    };
+    // Simple argument parser
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--depth" => {
+                if i + 1 >= args.len() {
+                    eprintln!("Error: --depth requires a value");
+                    print_usage(&args[0]);
+                    std::process::exit(1);
+                }
+                depth = args[i + 1].parse::<usize>().unwrap_or_else(|_| {
+                    eprintln!("Error: Invalid depth value '{}'", args[i + 1]);
+                    print_usage(&args[0]);
+                    std::process::exit(1);
+                });
+                i += 2;
+            }
+            "--shift" => {
+                if i + 1 >= args.len() {
+                    eprintln!("Error: --shift requires a value");
+                    print_usage(&args[0]);
+                    std::process::exit(1);
+                }
+                let shift_val = args[i + 1].parse::<u32>().unwrap_or_else(|_| {
+                    eprintln!("Error: Invalid shift value '{}'", args[i + 1]);
+                    print_usage(&args[0]);
+                    std::process::exit(1);
+                });
+                shift = Some(shift_val);
+                i += 2;
+            }
+            "--time" => {
+                if i + 1 >= args.len() {
+                    eprintln!("Error: --time requires a value");
+                    print_usage(&args[0]);
+                    std::process::exit(1);
+                }
+                time = args[i + 1].parse::<u64>().unwrap_or_else(|_| {
+                    eprintln!("Error: Invalid time value '{}'", args[i + 1]);
+                    print_usage(&args[0]);
+                    std::process::exit(1);
+                });
+                i += 2;
+            }
+            "--help" | "-h" => {
+                print_usage(&args[0]);
+                std::process::exit(0);
+            }
+            _ => {
+                eprintln!("Error: Unknown argument '{}'", args[i]);
+                print_usage(&args[0]);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    let duration_secs = time;
 
     let duration = Duration::from_secs(duration_secs);
 
@@ -254,12 +307,16 @@ fn main() {
     println!("System: {} CPUs detected, {} NUMA nodes, using {} tasks for benchmark",
              total_cpus, numa_nodes, num_cpus);
     println!("Bitmap depth: {} bits", depth);
+    if let Some(s) = shift {
+        println!("Shift: {} (bits per word: {})", s, 1usize << s);
+    } else {
+        println!("Shift: auto-calculated");
+    }
     println!("Duration: {} seconds", duration_secs);
-    println!("Usage: {} [depth] [seconds] (defaults: 32 bits, 10 seconds)", args[0]);
     println!();
 
     // Benchmark 1: Sbitmap (cache-line optimized with per-task hints)
-    let sbitmap = Arc::new(Sbitmap::new(depth, None, false));
+    let sbitmap = Arc::new(Sbitmap::new(depth, shift, false));
     benchmark("Sbitmap (Optimized)", sbitmap, duration, depth, num_cpus);
 
     // Benchmark 2: SimpleBitmap (no cache-line optimization, no hints)
