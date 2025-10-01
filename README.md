@@ -179,7 +179,7 @@ Example output on a 32-CPU system:
 ```
 System: 32 CPUs detected, 2 NUMA nodes, using 31 tasks for benchmark
 Bitmap depth: 32 bits
-Shift: auto-calculated
+Shift: auto-calculated (bits per word: 8)
 Duration: 10 seconds
 
 

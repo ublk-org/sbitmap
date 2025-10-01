@@ -307,16 +307,20 @@ fn main() {
     println!("System: {} CPUs detected, {} NUMA nodes, using {} tasks for benchmark",
              total_cpus, numa_nodes, num_cpus);
     println!("Bitmap depth: {} bits", depth);
+
+    // Create sbitmap to get actual configuration
+    let sbitmap = Arc::new(Sbitmap::new(depth, shift, false));
+    let bits_per_word = sbitmap.bits_per_word();
+
     if let Some(s) = shift {
-        println!("Shift: {} (bits per word: {})", s, 1usize << s);
+        println!("Shift: {} (bits per word: {})", s, bits_per_word);
     } else {
-        println!("Shift: auto-calculated");
+        println!("Shift: auto-calculated (bits per word: {})", bits_per_word);
     }
     println!("Duration: {} seconds", duration_secs);
     println!();
 
     // Benchmark 1: Sbitmap (cache-line optimized with per-task hints)
-    let sbitmap = Arc::new(Sbitmap::new(depth, shift, false));
     benchmark("Sbitmap (Optimized)", sbitmap, duration, depth, num_cpus);
 
     // Benchmark 2: SimpleBitmap (no cache-line optimization, no hints)
