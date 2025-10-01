@@ -585,4 +585,112 @@ mod tests {
         assert!(sb.get(&mut hint).is_none(), "Bitmap should be full");
         assert_eq!(sb.weight(), 16);
     }
+
+    #[test]
+    fn test_round_robin_concurrent() {
+        // Test that round-robin mode works correctly with concurrent threads
+        let sb = Arc::new(Sbitmap::new(128, None, true));
+        let mut handles = vec![];
+
+        // Use atomic vectors to collect allocated bits from each thread
+        let thread1_bits = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let thread2_bits = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        // Thread 1: allocate 32 bits
+        {
+            let sb_clone = Arc::clone(&sb);
+            let bits = Arc::clone(&thread1_bits);
+            handles.push(thread::spawn(move || {
+                let mut hint = 0;
+                let mut local_bits = Vec::new();
+                for _ in 0..32 {
+                    if let Some(bit) = sb_clone.get(&mut hint) {
+                        local_bits.push(bit);
+                    }
+                }
+                *bits.lock().unwrap() = local_bits;
+            }));
+        }
+
+        // Thread 2: allocate 32 bits
+        {
+            let sb_clone = Arc::clone(&sb);
+            let bits = Arc::clone(&thread2_bits);
+            handles.push(thread::spawn(move || {
+                let mut hint = 0;
+                let mut local_bits = Vec::new();
+                for _ in 0..32 {
+                    if let Some(bit) = sb_clone.get(&mut hint) {
+                        local_bits.push(bit);
+                    }
+                }
+                *bits.lock().unwrap() = local_bits;
+            }));
+        }
+
+        // Wait for both threads to complete
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let bits1 = thread1_bits.lock().unwrap();
+        let bits2 = thread2_bits.lock().unwrap();
+
+        // Both threads should have allocated 32 bits each
+        assert_eq!(bits1.len(), 32);
+        assert_eq!(bits2.len(), 32);
+
+        // Total should be 64 bits allocated
+        assert_eq!(sb.weight(), 64);
+
+        // Verify no bit is allocated twice - create a set of all allocated bits
+        let mut all_bits = std::collections::HashSet::new();
+        for &bit in bits1.iter() {
+            assert!(all_bits.insert(bit), "Bit {} allocated twice", bit);
+            assert!(bit < 128, "Bit {} out of range", bit);
+        }
+        for &bit in bits2.iter() {
+            assert!(all_bits.insert(bit), "Bit {} allocated twice", bit);
+            assert!(bit < 128, "Bit {} out of range", bit);
+        }
+
+        // Should have exactly 64 unique bits
+        assert_eq!(all_bits.len(), 64);
+
+        // Verify round-robin behavior: each thread's bits should be in ascending order
+        // In round-robin mode, hint advances sequentially, so bits should be allocated
+        // in increasing order (with possible gaps due to concurrent access)
+        fn verify_round_robin_order(bits: &[usize], depth: usize) {
+            for i in 1..bits.len() {
+                let prev = bits[i - 1];
+                let curr = bits[i];
+
+                // In round-robin, next bit should be >= prev (increasing order)
+                // or it wrapped around to beginning (curr < prev means wrap-around)
+                // Wrap-around is OK if we're near the end
+                let wrapped_around = curr < prev && prev > depth / 2;
+
+                assert!(
+                    curr > prev || wrapped_around,
+                    "Round-robin order violated: bits[{}]={}, bits[{}]={} (not increasing and no wrap-around)",
+                    i - 1, prev, i, curr
+                );
+            }
+        }
+
+        verify_round_robin_order(&bits1, 128);
+        verify_round_robin_order(&bits2, 128);
+
+        // Free all bits from both threads
+        let mut hint = 0;
+        for &bit in bits1.iter() {
+            sb.put(bit, &mut hint);
+        }
+        for &bit in bits2.iter() {
+            sb.put(bit, &mut hint);
+        }
+
+        // All bits should be free now
+        assert_eq!(sb.weight(), 0);
+    }
 }
