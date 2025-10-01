@@ -8,7 +8,7 @@ use std::env;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 #[cfg(target_os = "linux")]
 use std::fs;
@@ -89,8 +89,15 @@ fn run_workload<B>(
     thread::spawn(move || {
         let start = Instant::now();
         let mut local_ops = 0u64;
-        // Initialize hint based on start time to spread tasks across different positions
-        let mut hint = (start.elapsed().as_nanos() % depth as u128) as usize;
+
+        // Initialize hint combining stack address + system time for better randomization
+        let stack_var = 0u8;
+        let addr = &stack_var as *const _ as usize;
+        let time_ns = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as usize;
+        let mut hint = ((addr / 64).wrapping_add(time_ns)) % depth;
 
         while start.elapsed() < duration {
             // One operation = get() + put()
