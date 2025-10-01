@@ -77,6 +77,22 @@ impl SimpleBitmap {
 
 }
 
+/// Initialize allocation hint combining stack address + system time for better randomization
+///
+/// This creates a pseudo-random starting point for each task by combining:
+/// - Stack address (different for each thread)
+/// - Current time in nanoseconds
+/// This helps spread allocations across the bitmap and reduce contention.
+fn init_hint(depth: usize) -> usize {
+    let stack_var = 0u8;
+    let addr = &stack_var as *const _ as usize;
+    let time_ns = SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as usize;
+    ((addr / 64).wrapping_add(time_ns)) % depth
+}
+
 /// Run benchmark workload: continuous get() and put() operations
 fn run_workload<B>(
     bitmap: Arc<B>,
@@ -90,15 +106,7 @@ fn run_workload<B>(
     thread::spawn(move || {
         let start = Instant::now();
         let mut local_ops = 0u64;
-
-        // Initialize hint combining stack address + system time for better randomization
-        let stack_var = 0u8;
-        let addr = &stack_var as *const _ as usize;
-        let time_ns = SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as usize;
-        let mut hint = ((addr / 64).wrapping_add(time_ns)) % depth;
+        let mut hint = init_hint(depth);
 
         while start.elapsed() < duration {
             // One operation = get() + put()
@@ -123,15 +131,7 @@ fn run_batch_workload(
     thread::spawn(move || {
         let start = Instant::now();
         let mut local_ops = 0u64;
-
-        // Initialize hint combining stack address + system time for better randomization
-        let stack_var = 0u8;
-        let addr = &stack_var as *const _ as usize;
-        let time_ns = SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as usize;
-        let mut hint = ((addr / 64).wrapping_add(time_ns)) % depth;
+        let mut hint = init_hint(depth);
 
         while start.elapsed() < duration {
             // One operation = get_batch() + put_batch()
