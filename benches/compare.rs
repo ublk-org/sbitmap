@@ -81,6 +81,7 @@ fn run_workload<B>(
     bitmap: Arc<B>,
     duration: Duration,
     ops_counter: Arc<AtomicU64>,
+    depth: usize,
 ) where
     B: Send + Sync + 'static,
     B: BitmapOps,
@@ -88,7 +89,8 @@ fn run_workload<B>(
     thread::spawn(move || {
         let start = Instant::now();
         let mut local_ops = 0u64;
-        let mut hint = 0;
+        // Initialize hint based on start time to spread tasks across different positions
+        let mut hint = (start.elapsed().as_nanos() % depth as u128) as usize;
 
         while start.elapsed() < duration {
             // One operation = get() + put()
@@ -194,7 +196,7 @@ where
     for i in 0..num_tasks {
         let bitmap_clone = Arc::clone(&bitmap);
         let counter = Arc::clone(&ops_counters[i]);
-        run_workload(bitmap_clone, duration, counter);
+        run_workload(bitmap_clone, duration, counter, depth);
     }
 
     // Wait for duration + a bit more for threads to finish
