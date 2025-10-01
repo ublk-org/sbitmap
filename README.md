@@ -309,4 +309,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Credits
 
-Based on the Linux kernel's sbitmap implementation by Jens Axboe and Facebook contributors.
+Based on the Linux kernel's sbitmap implementation by Jens Axboe and other contributors.

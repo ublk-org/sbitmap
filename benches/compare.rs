@@ -307,26 +307,44 @@ fn benchmark_internal<B, F>(
     let duration_secs = duration.as_secs_f64();
     let mut total_ops = 0u64;
 
-    println!("\nResults:");
+    // Collect all results first to calculate column widths
+    let mut results = Vec::new();
     for i in 0..num_tasks {
         let ops = ops_counters[i].load(Ordering::Relaxed);
         let ops_per_sec = ops as f64 / duration_secs;
+        results.push((i, ops, ops_per_sec));
+        total_ops += ops;
+    }
+    let total_ops_per_sec = total_ops as f64 / duration_secs;
+
+    // Calculate column widths for alignment
+    let task_width = num_tasks.to_string().len();
+    let ops_width = total_ops.to_string().len().max(10);
+    let ops_per_sec_width = (total_ops_per_sec as u64).to_string().len().max(10);
+
+    println!("\nResults:");
+    for (i, ops, ops_per_sec) in results {
         println!(
-            "  Task {}: {} ops, {} ops/sec ({:.4} Mops/sec)",
+            "  Task {:>width_task$}: {:>width_ops$} ops, {:>width_ops_sec$} ops/sec ({:>8.3} Mops/sec)",
             i,
             ops,
             ops_per_sec as u64,
-            ops_per_sec / 1_000_000.0
+            ops_per_sec / 1_000_000.0,
+            width_task = task_width,
+            width_ops = ops_width,
+            width_ops_sec = ops_per_sec_width
         );
-        total_ops += ops;
     }
 
-    let total_ops_per_sec = total_ops as f64 / duration_secs;
     println!(
-        "  Total: {} ops, {} ops/sec ({:.4} Mops/sec)",
+        "  Total{:>width_task$}: {:>width_ops$} ops, {:>width_ops_sec$} ops/sec ({:>8.3} Mops/sec)",
+        "",
         total_ops,
         total_ops_per_sec as u64,
-        total_ops_per_sec / 1_000_000.0
+        total_ops_per_sec / 1_000_000.0,
+        width_task = task_width,
+        width_ops = ops_width,
+        width_ops_sec = ops_per_sec_width
     );
 }
 
