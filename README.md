@@ -92,7 +92,13 @@ for h in handles {
 
 ### `Sbitmap::new(depth: usize, shift: Option<u32>, round_robin: bool) -> Self`
 
-Create a new sbitmap with `depth` bits. The `shift` parameter controls how many bits per word (default is auto-calculated for optimal cache usage). The `round_robin` parameter enables strict round-robin allocation order (usually `false` for better performance).
+Create a new sbitmap with `depth` bits. The `shift` parameter controls how many bits per word (2^shift bits per word) and is critical for performance - it determines how bits are spread across multiple cache-line aligned words. When `None`, the shift is auto-calculated for optimal cache usage. The `round_robin` parameter enables strict round-robin allocation order (usually `false` for better performance).
+
+**Understanding the shift parameter:**
+- The shift value spreads bits among multiple words, which is key to sbitmap performance
+- Each word is on a separate cache line (64 bytes), reducing contention between CPUs
+- Smaller shift = more words = better spreading = less contention (but more memory overhead)
+- Larger shift = fewer words = more contention (but better memory efficiency)
 
 ### `get(&self, hint: &mut usize) -> Option<usize>`
 
@@ -128,6 +134,32 @@ Get the total number of bits in the bitmap.
 - **Memory overhead**: ~56 bytes per word (64 bits) due to cache-line alignment
 - **Thread safety**: Lock-free with atomic operations
 - **Scalability**: Linear scaling with number of CPUs up to bitmap depth
+
+## Performance Tuning
+
+The `shift` parameter is crucial for tuning sbitmap performance based on your workload:
+
+**When to use a smaller shift:**
+- **High contention**: When many threads are competing heavily for bit allocation and release, use a smaller shift to spread bits across more words and reduce contention on individual cache lines
+- **NUMA systems**: Machines with multiple NUMA nodes benefit significantly from smaller shift values, as this distributes memory accesses across more cache lines and reduces cross-node traffic
+- **Many concurrent allocators**: Systems with a high CPU count see better scalability with smaller shift values
+
+**Examples:**
+```rust
+// High contention scenario (32-core NUMA system)
+let sb = Sbitmap::new(1024, Some(4), false);  // 2^4 = 16 bits per word, 64 words
+
+// Low contention scenario (4-core system)
+let sb = Sbitmap::new(1024, Some(6), false);  // 2^6 = 64 bits per word, 16 words
+
+// Let sbitmap decide (recommended starting point)
+let sb = Sbitmap::new(1024, None, false);     // Auto-calculated based on depth
+```
+
+**Trade-offs:**
+- Smaller shift improves performance under contention but uses more memory (each word needs 64 bytes for cache-line alignment)
+- Larger shift reduces memory overhead but increases contention when many threads compete
+- The auto-calculated shift (when `None`) provides a balanced default suitable for most workloads
 
 ## Memory Ordering
 
