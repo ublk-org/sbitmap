@@ -148,6 +148,19 @@ impl Sbitmap {
         }
     }
 
+    /// Create a bit mask for nr_bits
+    ///
+    /// Returns a mask with nr_bits set to 1.
+    /// Handles the special case when nr_bits == BITS_PER_WORD to avoid shift overflow.
+    #[inline]
+    fn make_mask(nr_bits: usize) -> usize {
+        if nr_bits == BITS_PER_WORD {
+            usize::MAX
+        } else {
+            (1usize << nr_bits).wrapping_sub(1)
+        }
+    }
+
     /// Find nr_bits consecutive zero bits in a word starting from hint
     ///
     /// Returns the starting position if found, None otherwise.
@@ -162,7 +175,7 @@ impl Sbitmap {
             return None;
         }
 
-        let mask = (1usize << nr_bits).wrapping_sub(1);
+        let mask = Self::make_mask(nr_bits);
 
         for start in hint..=(depth - nr_bits) {
             let bits_mask = mask << start;
@@ -268,7 +281,7 @@ impl Sbitmap {
             };
 
             // Try to atomically set all nr_bits bits
-            let mask = (1usize << nr_bits).wrapping_sub(1);
+            let mask = Self::make_mask(nr_bits);
             let bits_mask = mask << nr;
             let old = word.fetch_or(bits_mask, Ordering::Acquire);
 
@@ -518,7 +531,7 @@ impl Sbitmap {
         }
 
         let offset = self.bit_to_offset(bitnr);
-        let mask = (1usize << nr_bits).wrapping_sub(1);
+        let mask = Self::make_mask(nr_bits);
         let clear_mask = !(mask << offset);
 
         self.map[start_index]
