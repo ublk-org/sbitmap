@@ -22,6 +22,9 @@ cargo run --bin bench_compare --release -- --depth 128 --time 2
 # Run with specific number of tasks
 cargo run --bin bench_compare --release -- --depth 256 --tasks 8
 
+# Enable round-robin allocation mode
+cargo run --bin bench_compare --release -- --depth 128 --round-robin
+
 # Show help
 cargo run --bin bench_compare --release -- --help
 ```
@@ -32,6 +35,7 @@ cargo run --bin bench_compare --release -- --help
 - `--shift SHIFT` - log2(bits per word), auto-calculated if not specified
 - `--time TIME` - Benchmark duration in seconds (default: 10)
 - `--tasks TASKS` - Number of concurrent tasks (default: NUM_CPUS - 1)
+- `--round-robin` - Enable round-robin allocation mode (default: disabled)
 
 The benchmark auto-detects available CPUs and uses N-1 tasks (where N is total CPU count). This leaves one CPU for system tasks and ensures maximum contention testing.
 

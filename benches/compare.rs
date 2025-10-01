@@ -172,16 +172,17 @@ fn print_usage(program: &str) {
     eprintln!("Usage: {} [OPTIONS]", program);
     eprintln!();
     eprintln!("Options:");
-    eprintln!("  --depth DEPTH   Bitmap depth in bits (default: 32)");
-    eprintln!("  --shift SHIFT   log2(bits per word) (default: auto-calculated)");
-    eprintln!("  --time TIME     Benchmark duration in seconds (default: 10)");
-    eprintln!("  --tasks TASKS   Number of concurrent tasks (default: NUM_CPUS - 1)");
-    eprintln!("  -h, --help      Show this help message");
+    eprintln!("  --depth DEPTH      Bitmap depth in bits (default: 32)");
+    eprintln!("  --shift SHIFT      log2(bits per word) (default: auto-calculated)");
+    eprintln!("  --time TIME        Benchmark duration in seconds (default: 10)");
+    eprintln!("  --tasks TASKS      Number of concurrent tasks (default: NUM_CPUS - 1)");
+    eprintln!("  --round-robin      Enable round-robin allocation mode (default: disabled)");
+    eprintln!("  -h, --help         Show this help message");
     eprintln!();
     eprintln!("Examples:");
     eprintln!("  {} --depth 1024 --time 5", program);
     eprintln!("  {} --depth 512 --shift 5 --time 10", program);
-    eprintln!("  {} --depth 256 --tasks 8", program);
+    eprintln!("  {} --depth 256 --tasks 8 --round-robin", program);
 }
 
 /// Run benchmark with N tasks
@@ -229,13 +230,14 @@ where
 }
 
 fn main() {
-    // Parse command line arguments: --depth DEPTH --shift SHIFT --time TIME --tasks TASKS
+    // Parse command line arguments: --depth DEPTH --shift SHIFT --time TIME --tasks TASKS --round-robin
     let args: Vec<String> = env::args().collect();
 
     let mut depth = 32usize;      // Default depth
     let mut shift: Option<u32> = None;  // Default shift (auto-calculate)
     let mut time = 10u64;         // Default time in seconds
     let mut tasks: Option<usize> = None;  // Default tasks (auto-calculate: NUM_CPUS - 1)
+    let mut round_robin = false;  // Default round-robin mode (disabled)
 
     // Simple argument parser
     let mut i = 1;
@@ -300,6 +302,10 @@ fn main() {
                 tasks = Some(tasks_val);
                 i += 2;
             }
+            "--round-robin" => {
+                round_robin = true;
+                i += 1;
+            }
             "--help" | "-h" => {
                 print_usage(&args[0]);
                 std::process::exit(0);
@@ -346,7 +352,7 @@ fn main() {
     println!("Bitmap depth: {} bits", depth);
 
     // Create sbitmap to get actual configuration
-    let sbitmap = Arc::new(Sbitmap::new(depth, shift, false));
+    let sbitmap = Arc::new(Sbitmap::new(depth, shift, round_robin));
     let bits_per_word = sbitmap.bits_per_word();
 
     if let Some(s) = shift {
@@ -354,6 +360,7 @@ fn main() {
     } else {
         println!("Shift: auto-calculated (bits per word: {})", bits_per_word);
     }
+    println!("Round-robin: {}", if round_robin { "enabled" } else { "disabled" });
     println!("Duration: {} seconds", duration_secs);
     println!();
 
