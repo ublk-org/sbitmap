@@ -203,6 +203,7 @@ Options:
 - `--depth DEPTH` - Bitmap depth in bits (default: 32)
 - `--shift SHIFT` - log2(bits per word), auto-calculated if not specified
 - `--time TIME` - Benchmark duration in seconds (default: 10)
+- `--tasks TASKS` - Number of concurrent tasks (default: NUM_CPUS - 1)
 
 See [benches/README.md](benches/README.md) for more details.
 

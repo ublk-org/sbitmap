@@ -175,11 +175,13 @@ fn print_usage(program: &str) {
     eprintln!("  --depth DEPTH   Bitmap depth in bits (default: 32)");
     eprintln!("  --shift SHIFT   log2(bits per word) (default: auto-calculated)");
     eprintln!("  --time TIME     Benchmark duration in seconds (default: 10)");
+    eprintln!("  --tasks TASKS   Number of concurrent tasks (default: NUM_CPUS - 1)");
     eprintln!("  -h, --help      Show this help message");
     eprintln!();
     eprintln!("Examples:");
     eprintln!("  {} --depth 1024 --time 5", program);
     eprintln!("  {} --depth 512 --shift 5 --time 10", program);
+    eprintln!("  {} --depth 256 --tasks 8", program);
 }
 
 /// Run benchmark with N tasks
@@ -227,12 +229,13 @@ where
 }
 
 fn main() {
-    // Parse command line arguments: --depth DEPTH --shift SHIFT --time TIME
+    // Parse command line arguments: --depth DEPTH --shift SHIFT --time TIME --tasks TASKS
     let args: Vec<String> = env::args().collect();
 
     let mut depth = 32usize;      // Default depth
     let mut shift: Option<u32> = None;  // Default shift (auto-calculate)
     let mut time = 10u64;         // Default time in seconds
+    let mut tasks: Option<usize> = None;  // Default tasks (auto-calculate: NUM_CPUS - 1)
 
     // Simple argument parser
     let mut i = 1;
@@ -278,6 +281,25 @@ fn main() {
                 });
                 i += 2;
             }
+            "--tasks" => {
+                if i + 1 >= args.len() {
+                    eprintln!("Error: --tasks requires a value");
+                    print_usage(&args[0]);
+                    std::process::exit(1);
+                }
+                let tasks_val = args[i + 1].parse::<usize>().unwrap_or_else(|_| {
+                    eprintln!("Error: Invalid tasks value '{}'", args[i + 1]);
+                    print_usage(&args[0]);
+                    std::process::exit(1);
+                });
+                if tasks_val == 0 {
+                    eprintln!("Error: tasks must be at least 1");
+                    print_usage(&args[0]);
+                    std::process::exit(1);
+                }
+                tasks = Some(tasks_val);
+                i += 2;
+            }
             "--help" | "-h" => {
                 print_usage(&args[0]);
                 std::process::exit(0);
@@ -302,11 +324,17 @@ fn main() {
     // Detect number of NUMA nodes
     let numa_nodes = detect_numa_nodes();
 
-    // Use N-1 CPUs if N > 1, else use N
-    let num_cpus = if total_cpus > 1 {
-        total_cpus - 1
-    } else {
-        total_cpus
+    // Determine number of tasks to run
+    let num_cpus = match tasks {
+        Some(t) => t,  // Use user-specified value
+        None => {
+            // Default: Use N-1 CPUs if N > 1, else use N
+            if total_cpus > 1 {
+                total_cpus - 1
+            } else {
+                total_cpus
+            }
+        }
     };
 
     println!("╔═══════════════════════════════════════════════════════════╗");
