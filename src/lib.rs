@@ -1025,8 +1025,9 @@ mod tests {
 
     #[test]
     #[allow(unused_assignments)]
-    fn test_batch_word_boundary() {
-        // Create bitmap with known word size
+    #[cfg(target_pointer_width = "64")]
+    fn test_batch_word_boundary_64bit() {
+        // Create bitmap with 64-bit words (only possible on 64-bit systems)
         let sb = Sbitmap::new(128, Some(6), false); // 2^6 = 64 bits per word
         let mut hint = 0;
 
@@ -1056,6 +1057,42 @@ mod tests {
         hint = 0;
         sb.put_batch(62, 4, &mut hint); // Should be rejected (spans words)
                                         // Bits 60-63 should still be allocated since put_batch should reject this
+        assert_eq!(sb.weight(), 4);
+    }
+
+    #[test]
+    #[allow(unused_assignments)]
+    #[cfg(target_pointer_width = "32")]
+    fn test_batch_word_boundary_32bit() {
+        // Create bitmap with 32-bit words (for 32-bit systems)
+        let sb = Sbitmap::new(64, Some(5), false); // 2^5 = 32 bits per word
+        let mut hint = 0;
+
+        // Allocate bits near the end of the first word (bits 28-31)
+        for i in 28..32 {
+            hint = i;
+            sb.get(&mut hint).expect("Should allocate bit");
+        }
+
+        // Try to allocate a batch starting at bit 30 (would span word boundary)
+        hint = 30;
+        let batch = sb.get_batch(4, &mut hint);
+
+        // The batch should either:
+        // 1. Not start at 30 (because it can't span words), or
+        // 2. Be None if no suitable position found
+        if let Some(start) = batch {
+            // If we got a batch, verify all bits are in the same word
+            let start_word = start / 32;
+            let end_word = (start + 3) / 32;
+            assert_eq!(start_word, end_word, "Batch should not span word boundary");
+            sb.put_batch(start, 4, &mut hint);
+        }
+
+        // Verify put_batch rejects spanning word boundary
+        hint = 0;
+        sb.put_batch(30, 4, &mut hint); // Should be rejected (spans words)
+                                        // Bits 28-31 should still be allocated since put_batch should reject this
         assert_eq!(sb.weight(), 4);
     }
 
