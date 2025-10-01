@@ -538,4 +538,51 @@ mod tests {
         let sb3 = Sbitmap::new(128, Some(4), false);
         assert_eq!(sb3.bits_per_word(), 16); // 2^4 = 16
     }
+
+    #[test]
+    fn test_round_robin() {
+        // Test that round-robin mode allocates bits in sequential order
+        let sb = Sbitmap::new(16, None, true);
+        let mut hint = 0;
+        let mut allocated = Vec::new();
+
+        // Allocate several bits - should be sequential in round-robin mode
+        for i in 0..8 {
+            let bit = sb.get(&mut hint).expect("Should allocate bit");
+            allocated.push(bit);
+            // In round-robin mode, bits should be allocated sequentially
+            assert_eq!(bit, i, "Round-robin should allocate bit {} but got {}", i, bit);
+        }
+
+        // Free some bits in the middle
+        sb.put(allocated[3], &mut hint); // Free bit 3
+        sb.put(allocated[5], &mut hint); // Free bit 5
+
+        // Allocate more bits - should continue from where we left off (bit 8)
+        // and NOT reuse the freed bits 3 and 5 immediately
+        let bit8 = sb.get(&mut hint).expect("Should allocate bit 8");
+        assert_eq!(bit8, 8, "Round-robin should continue sequentially");
+
+        let bit9 = sb.get(&mut hint).expect("Should allocate bit 9");
+        assert_eq!(bit9, 9, "Round-robin should continue sequentially");
+
+        // When we wrap around, we should find the freed bits
+        // Allocate more to fill up to the end
+        for i in 10..16 {
+            let bit = sb.get(&mut hint).expect("Should allocate bit");
+            assert_eq!(bit, i, "Round-robin should allocate bit {}", i);
+        }
+
+        // Now it should wrap around and find bit 3 (first freed bit)
+        let bit = sb.get(&mut hint).expect("Should wrap around");
+        assert_eq!(bit, 3, "Should wrap around and find bit 3");
+
+        // Then find bit 5
+        let bit = sb.get(&mut hint).expect("Should find bit 5");
+        assert_eq!(bit, 5, "Should find bit 5");
+
+        // Now bitmap should be full
+        assert!(sb.get(&mut hint).is_none(), "Bitmap should be full");
+        assert_eq!(sb.weight(), 16);
+    }
 }
